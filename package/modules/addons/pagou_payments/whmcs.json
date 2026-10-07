@@ -1,0 +1,36 @@
+{
+  "schema": "1.0",
+  "type": "whmcs-addons",
+  "name": "pagou_payments",
+  "license": "MIT",
+  "category": "payments",
+  "description": {
+    "name": "Pagou para WHMCS",
+    "tagline": "Gerencie Pix, boleto e cartão de crédito da Pagou em uma única integração.",
+    "long": "Integração oficial da Pagou para centralizar pagamentos, configuração, diagnóstico e operação financeira no WHMCS. O addon coordena os gateways, processa tarefas em segundo plano e oferece uma visão clara da saúde de cada cobrança.",
+    "features": [
+      "Uma única credencial Pagou para todos os meios de pagamento",
+      "Painel administrativo com diagnóstico, filas e conciliação",
+      "Processamento assíncrono para preservar o cron diário do WHMCS",
+      "Operação segura contra duplicidade, reprocessamento e falhas parciais",
+      "Área autenticada para acompanhamento dos pagamentos do cliente",
+      "Consulta dos dados de split retornados pela Pagou, sem criar regras de divisão"
+    ]
+  },
+  "logo": {
+    "filename": "logo.png"
+  },
+  "support": {
+    "homepage": "https://pagou.com.br",
+    "learn_more": "https://pagou.com.br",
+    "email": "suporte@pagou.com.br",
+    "support_url": "https://suporte.pagou.com.br",
+    "docs_url": "https://docs.pagou.com.br"
+  },
+  "authors": [
+    {
+      "name": "Pagou",
+      "homepage": "https://pagou.com.br"
+    }
+  ]
+}

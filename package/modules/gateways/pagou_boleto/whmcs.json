@@ -1,0 +1,35 @@
+{
+  "schema": "1.0",
+  "type": "whmcs-gateways",
+  "name": "pagou_boleto",
+  "license": "MIT",
+  "category": "payments",
+  "description": {
+    "name": "Pagou Boleto",
+    "tagline": "Emita boletos completos sem comprometer o cron diário do WHMCS.",
+    "long": "Gateway oficial da Pagou para boleto no WHMCS. Linha digitável, código de barras, PDF e QR Code Pix pertencem à mesma cobrança e são disponibilizados conforme ficam prontos, com processamento seguro em segundo plano.",
+    "features": [
+      "Linha digitável, código de barras, PDF e QR Code Pix na mesma cobrança",
+      "Emissão e obtenção do PDF processadas em segundo plano",
+      "Envio do boleto por e-mail somente quando o documento estiver pronto",
+      "Cancelamento e substituição controlados com preservação do histórico",
+      "Conciliação automática e proteção contra pagamentos duplicados"
+    ]
+  },
+  "logo": {
+    "filename": "logo.png"
+  },
+  "support": {
+    "homepage": "https://pagou.com.br",
+    "learn_more": "https://pagou.com.br",
+    "email": "suporte@pagou.com.br",
+    "support_url": "https://suporte.pagou.com.br",
+    "docs_url": "https://docs.pagou.com.br"
+  },
+  "authors": [
+    {
+      "name": "Pagou",
+      "homepage": "https://pagou.com.br"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "name": "pagou/module-whmcs",
+  "description": "Modulo oficial Pagou para WHMCS.",
+  "type": "project",
+  "license": "MIT",
+  "require": {
+    "php": "^8.1"
+  },
+  "require-dev": {
+    "phpstan/phpstan": "^2.2",
+    "phpunit/phpunit": "^10.5",
+    "squizlabs/php_codesniffer": "^3.10",
+    "tecnickcom/tcpdf": "^6.10"
+  },
+  "autoload": {
+    "psr-4": {
+      "Pagou\\Payments\\": "package/modules/addons/pagou_payments/",
+      "Pagou\\Whmcs\\": "package/modules/gateways/pagou/src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Pagou\\Payments\\Tests\\": "tests/",
+      "Pagou\\Whmcs\\Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "lint": "bash scripts/lint.sh",
+    "test": "bash scripts/test.sh",
+    "typecheck": "bash scripts/typecheck.sh",
+    "build": "bash scripts/build-package.sh",
+    "check": "bash scripts/check.sh"
+  },
+  "config": {
+    "sort-packages": true,
+    "allow-plugins": {
+      "phpstan/extension-installer": false
+    }
+  }
+}

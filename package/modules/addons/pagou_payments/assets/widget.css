@@ -1,0 +1,54 @@
+.pagou-home-widget{--pagou-widget-blue:#2856d9;--pagou-widget-ink:#1f2937;--pagou-widget-muted:#667085;--pagou-widget-border:#e2e7ef;padding:18px;color:var(--pagou-widget-ink);font-size:13px;line-height:1.5;text-align:left}
+.pagou-home-widget *{box-sizing:border-box}
+.pagou-home-widget a{color:var(--pagou-widget-blue);text-decoration:none}
+.pagou-home-widget a:focus-visible{outline:2px solid var(--pagou-widget-blue);outline-offset:3px}
+.pagou-home-header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding-bottom:16px;border-bottom:1px solid var(--pagou-widget-border)}
+.pagou-home-widget svg.pagou-home-logo{display:block;width:103px;height:42px;flex-shrink:0;margin-top:3px}
+.pagou-home-environment{font-size:11px;font-weight:600;border:1px solid var(--pagou-widget-border);padding:3px 9px;border-radius:12px}
+.pagou-home-balance{display:flex;flex:1;min-width:0;flex-direction:column;gap:6px;overflow-wrap:anywhere}
+.pagou-home-brand{display:flex;flex-shrink:0;flex-direction:column;align-items:flex-end;gap:8px}
+.pagou-home-balance>strong{font-size:27px;line-height:1.25;font-weight:650;letter-spacing:-.5px;color:var(--pagou-widget-ink);font-variant-numeric:tabular-nums}
+.pagou-home-balance>strong.pagou-home-amount{color:#15803d}
+.pagou-home-balance small,.pagou-home-caption,.pagou-home-refresh{font-size:11px;color:var(--pagou-widget-muted)}
+.pagou-home-section-label{font-size:11px;font-weight:600;color:var(--pagou-widget-muted);margin:15px 0 8px}
+.pagou-home-receipts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.pagou-home-receipt{display:flex;flex-direction:column;gap:3px;padding:10px;border:1px solid var(--pagou-widget-border);border-radius:8px;color:var(--pagou-widget-ink)}
+.pagou-home-receipts strong{font-size:18px;font-weight:600;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.pagou-home-widget .pagou-home-receipts-time{margin-top:10px}
+.pagou-home-receipts small{color:var(--pagou-widget-muted);font-size:11px}
+.pagou-home-pending{display:flex;align-items:center;gap:8px;padding:12px 0;font-weight:600}
+.pagou-home-pending span{flex:1}
+.pagou-home-widget svg{flex-shrink:0;vertical-align:middle}
+.pagou-home-widget .pagou-home-warning{color:#9a6700}
+.pagou-home-widget .pagou-home-caption{margin:0 0 7px}
+.pagou-home-links{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:13px 0 9px}
+.pagou-home-links a{display:inline-flex;align-items:center;justify-content:center;padding:7px 12px;border:1px solid var(--pagou-widget-border);border-radius:6px;font-weight:600}
+.pagou-home-links a.pagou-home-primary{color:#fff;background:var(--pagou-widget-blue);border-color:var(--pagou-widget-blue)}
+.pagou-home-refresh{display:block}
+.pagou-home-widget{position:relative}
+/* Same central loading card as the addon, contained by this widget. */
+.panel[data-widget="PagouOfficialSummary"] .panel-body.panel-loading{opacity:1}
+.pagou-widget-loading-layer{position:absolute;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(255,255,255,.74);backdrop-filter:blur(2px);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .16s ease,visibility .16s ease}
+.panel[data-widget="PagouOfficialSummary"] .panel-loading .pagou-widget-loading-layer{opacity:1;visibility:visible;pointer-events:auto;cursor:progress}
+.pagou-widget-loading-panel{display:flex;align-items:center;gap:14px;min-width:min(310px,100%);max-width:100%;padding:15px 18px;border:1px solid #e4e8ef;border-radius:9px;background:#fff;color:#0b1220;box-shadow:0 1px 2px rgba(11,18,32,.04),0 10px 30px -15px rgba(11,18,32,.18)}
+.pagou-widget-loading-copy{display:flex;flex-direction:column;gap:2px;min-width:0}
+.pagou-widget-loading-headline{display:flex;align-items:baseline;gap:10px;min-width:0}
+.pagou-widget-loading-copy strong{font-size:13.5px;line-height:1.35}
+.pagou-widget-loading-copy small{font-size:11.5px;line-height:1.4;color:#5d6878}
+.pagou-widget-loading-label{position:relative;color:#5d6878;white-space:nowrap}
+.pagou-widget-loading-label::after{content:attr(data-pagou-label);position:absolute;inset:0;color:#0b1220;pointer-events:none;-webkit-mask-image:linear-gradient(90deg,transparent 25%,#000 50%,transparent 75%);mask-image:linear-gradient(90deg,transparent 25%,#000 50%,transparent 75%);-webkit-mask-size:200% 100%;mask-size:200% 100%;animation:pagou-widget-shimmer-text 1.4s linear infinite}
+.pagou-widget-loading-elapsed{display:none;flex:0 0 auto;color:#5d6878;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;line-height:1;font-variant-numeric:tabular-nums}
+.pagou-widget-loading-elapsed.is-visible{display:inline}
+.pagou-widget-pixel-loader{display:inline-grid;grid-template-columns:repeat(3,5px);gap:2px;flex:0 0 auto;color:#2856d9;line-height:1}
+.pagou-widget-pixel-cell{display:block;width:5px;height:5px;border-radius:1px;background:currentColor;opacity:.15;animation:pagou-widget-pixel-on 650ms ease-in-out infinite}
+.pagou-widget-pixel-cell:nth-child(4){animation-delay:0ms}
+.pagou-widget-pixel-cell:nth-child(1),.pagou-widget-pixel-cell:nth-child(5),.pagou-widget-pixel-cell:nth-child(7){animation-delay:90ms}
+.pagou-widget-pixel-cell:nth-child(2),.pagou-widget-pixel-cell:nth-child(6),.pagou-widget-pixel-cell:nth-child(8){animation-delay:180ms}
+.pagou-widget-pixel-cell:nth-child(3),.pagou-widget-pixel-cell:nth-child(9){animation-delay:270ms}
+@keyframes pagou-widget-pixel-on{0%,100%{opacity:.12}50%{opacity:1}}
+@keyframes pagou-widget-shimmer-text{0%{-webkit-mask-position:200% 0;mask-position:200% 0}100%{-webkit-mask-position:-200% 0;mask-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.pagou-widget-loading-layer{transition:none}.pagou-widget-pixel-cell{animation:none;opacity:.35}.pagou-widget-loading-label{color:#0b1220}.pagou-widget-loading-label::after{display:none;animation:none}}
+@media(max-width:480px){.pagou-home-header{gap:12px}.pagou-home-widget svg.pagou-home-logo{width:82px;height:34px}.pagou-home-balance>strong{font-size:24px}}
+html.dark .pagou-home-widget,body.dark .pagou-home-widget,body[data-theme="dark"] .pagou-home-widget{--pagou-widget-blue:#86a8ff;--pagou-widget-ink:#e5e7eb;--pagou-widget-muted:#a8b0bd;--pagou-widget-border:#4b5563}
+html.dark .pagou-home-primary,body.dark .pagou-home-primary,body[data-theme="dark"] .pagou-home-primary{background:#2856d9!important;border-color:#2856d9!important}
+html.dark .pagou-home-amount,body.dark .pagou-home-amount,body[data-theme="dark"] .pagou-home-amount{color:#4ade80!important}

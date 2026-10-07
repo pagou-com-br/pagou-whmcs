@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "pagou-whmcs",
+  "display_name": "Pagou para WHMCS",
+  "version": "0.3.0-rc.1",
+  "license": "MIT",
+  "php": ">=8.1",
+  "whmcs": ">=8.6 <9.0",
+  "whmcs_tested": "8.13",
+  "install_root": "modules",
+  "components": [
+    "addons/pagou_payments",
+    "gateways/pagou",
+    "gateways/pagou_pix",
+    "gateways/pagou_boleto",
+    "gateways/pagou_creditcard"
+  ]
+}

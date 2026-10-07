@@ -1,0 +1,9 @@
+parameters:
+    level: 6
+    paths:
+        - package/modules/gateways/pagou/src
+        - package/modules/addons/pagou_payments/admin
+    scanDirectories:
+        - package/modules/gateways/pagou/vendor/fpdi/src
+    tmpDir: var/phpstan
+    reportUnmatchedIgnoredErrors: true

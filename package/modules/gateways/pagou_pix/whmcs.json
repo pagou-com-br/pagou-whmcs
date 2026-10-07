@@ -1,0 +1,35 @@
+{
+  "schema": "1.0",
+  "type": "whmcs-gateways",
+  "name": "pagou_pix",
+  "license": "MIT",
+  "category": "payments",
+  "description": {
+    "name": "Pagou Pix",
+    "tagline": "Receba pagamentos por Pix com uma experiência rápida e integrada ao WHMCS.",
+    "long": "Gateway oficial da Pagou para pagamentos por Pix no WHMCS. A cobrança é preparada em segundo plano, apresentada diretamente na fatura e acompanhada até a confirmação financeira, sem bloquear a geração diária de faturas.",
+    "features": [
+      "Pix imediato ou com vencimento baseado na data da fatura",
+      "QR Code e código Pix copia e cola na própria fatura",
+      "Atualização automática do pagamento com proteção contra duplicidade",
+      "Cancelamento, reembolso e conciliação com trilha de auditoria",
+      "Configuração central compartilhada com os demais meios Pagou"
+    ]
+  },
+  "logo": {
+    "filename": "logo.png"
+  },
+  "support": {
+    "homepage": "https://pagou.com.br",
+    "learn_more": "https://pagou.com.br",
+    "email": "suporte@pagou.com.br",
+    "support_url": "https://suporte.pagou.com.br",
+    "docs_url": "https://docs.pagou.com.br"
+  },
+  "authors": [
+    {
+      "name": "Pagou",
+      "homepage": "https://pagou.com.br"
+    }
+  ]
+}

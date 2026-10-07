@@ -1,0 +1,6 @@
+FPDI 2.6.8, Setasign GmbH & Co. KG, MIT (LICENSE.txt).
+Source: https://github.com/Setasign/FPDI
+Commit: 881945be29a4996ad3d008eb18ddc01fa3df890c
+Archive SHA256: 45f532731039b614a233afeb527ea958d93185eb8aa3bbef9d364558d33283d4
+Bundled src/ with namespace setasign\Fpdi replaced by Pagou\Whmcs\Vendor\Fpdi to avoid collisions with other WHMCS modules. No other source changes.
+TCPDF is supplied by WHMCS at runtime. Composer TCPDF is for development tests only.

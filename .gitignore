@@ -1,0 +1,12 @@
+/vendor/
+/build/
+/var/
+/node_modules/
+/.phpunit.cache/
+/.phpstan.cache/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+.env.*
+*.log

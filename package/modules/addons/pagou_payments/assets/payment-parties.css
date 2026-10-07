@@ -1,0 +1,24 @@
+.pagou-parties { border: 1px solid var(--pagou-line, #e1e7f0); border-radius: 8px; padding: 18px; margin: 18px 0; text-align: left; }
+.pagou-parties h3 { font-size: 15px; margin: 0 0 14px; }
+.pagou-parties h4 { color: #5e6b82; font-size: 12px; font-weight: 500; margin: 0 0 8px; }
+.pagou-party-record + .pagou-party-record { border-top: 1px solid var(--pagou-line, #e1e7f0); padding-top: 16px; margin-top: 16px; }
+.pagou-party-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; line-height: 1.5; overflow-wrap: anywhere; }
+.pagou-parties small, .pagou-report-table .pagou-party-note { display: block; margin-top: 5px; color: #5e6b82; }
+.pagou-party-note { font-size: 12px; }
+.pagou-party-references { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 16px; }
+.pagou-party-references > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.pagou-party-references span { color: #5e6b82; font-size: 12px; }
+.pagou-party-references code { overflow-wrap: anywhere; white-space: normal; color: inherit; background: transparent; }
+.pagou-party-references button { background: transparent; border: 1px solid #cbd5e1; border-radius: 4px; color: #2856d9; padding: 4px 8px; cursor: pointer; }
+.pagou-party-references button:hover { background: #eef4ff; border-color: #2856d9; }
+.pagou-party-references button:focus-visible { outline: 2px solid #2856d9; outline-offset: 2px; }
+.pagou-party-references button:disabled { opacity: .6; cursor: default; }
+@media (max-width: 640px) { .pagou-party-grid { grid-template-columns: minmax(0,1fr); gap: 16px; } }
+
+/* The payer's document is a quiet shortcut to the addon search. */
+.pagou-party-search { align-items: center; border-bottom: 1px dotted currentColor; color: inherit; display: inline-flex; gap: 4px; text-decoration: none; }
+.pagou-party-search svg { opacity: .55; transition: opacity .12s; }
+.pagou-party-search:hover, .pagou-party-search:focus-visible { border-bottom-style: solid; color: #2856d9; text-decoration: none; }
+.pagou-party-search:hover svg, .pagou-party-search:focus-visible svg { opacity: 1; }
+.pagou-party-search:focus-visible { border-radius: 2px; outline: 2px solid #2856d9; outline-offset: 2px; }
+html.dark .pagou-party-search:hover, body.dark .pagou-party-search:hover, body[data-theme="dark"] .pagou-party-search:hover { color: #8fb0ff; }

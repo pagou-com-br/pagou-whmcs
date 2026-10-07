@@ -1,0 +1,180 @@
+/* Pagou card on the WHMCS admin invoice. Tokens are scoped to the card. */
+.pagou-invoice-admin {
+    --pi-accent: #2856d9; --pi-accent-soft: #eef3ff; --pi-ink: #0f1b33; --pi-text: #334155; --pi-muted: #64748b;
+    --pi-line: #e3e9f2; --pi-soft: #f5f7fb; --pi-surface: #fff;
+    --pi-ok: #15803d; --pi-ok-bg: #effaf3; --pi-ok-line: #c3e6cf;
+    --pi-warn: #b45309; --pi-warn-bg: #fff8ec; --pi-warn-line: #fbd9a5;
+    --pi-bad: #be123c; --pi-bad-bg: #fff1f3; --pi-bad-line: #fbcbd5;
+    --pi-info: #1d4ed8; --pi-info-bg: #f1f5ff; --pi-info-line: #cdd9fb;
+    position: relative;
+    background: linear-gradient(140deg, #f6f8ff 0%, var(--pi-surface) 42%);
+    border: 1px solid var(--pi-line);
+    border-left: 3px solid var(--pi-accent);
+    border-radius: 10px;
+    box-shadow: 0 1px 2px rgb(15 27 51 / 4%), 0 10px 26px -14px rgb(15 27 51 / 22%);
+    color: var(--pi-text);
+    font-size: 13.5px;
+    line-height: 1.45;
+    margin: 1rem auto;
+    max-width: 720px;
+    padding: 16px 20px 18px;
+    text-align: left;
+}
+.pagou-invoice-admin .pagou-icon { display: block; flex-shrink: 0; }
+
+.pagou-invoice-admin header { align-items: center; display: flex; flex-wrap: wrap; gap: 10px 16px; justify-content: space-between; }
+.pagou-invoice-brand { align-items: center; display: flex; gap: 14px; min-width: 0; }
+.pagou-invoice-logo { display: block; flex-shrink: 0; height: auto; width: 92px; }
+.pagou-invoice-method {
+    align-items: center; border-left: 1px solid var(--pi-line); color: var(--pi-ink); display: inline-flex;
+    font-size: 14px; font-weight: 650; gap: 7px; line-height: 1.3; padding-left: 14px;
+}
+.pagou-invoice-method .pagou-icon { color: var(--pi-accent); }
+.pagou-invoice-state {
+    align-items: center; border: 1px solid; border-radius: 999px; display: inline-flex; font-size: 12px;
+    font-weight: 600; gap: 7px; line-height: 1.2; padding: 5px 11px 5px 9px; white-space: nowrap;
+}
+.pagou-invoice-dot { background: currentColor; border-radius: 50%; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 16%, transparent); flex-shrink: 0; height: 7px; width: 7px; }
+.pagou-invoice-state--success { background: var(--pi-ok-bg); border-color: var(--pi-ok-line); color: var(--pi-ok); }
+.pagou-invoice-state--warning { background: var(--pi-warn-bg); border-color: var(--pi-warn-line); color: var(--pi-warn); }
+.pagou-invoice-state--danger { background: var(--pi-bad-bg); border-color: var(--pi-bad-line); color: var(--pi-bad); }
+.pagou-invoice-state--muted { background: var(--pi-soft); border-color: var(--pi-line); color: var(--pi-muted); }
+
+/* Parties: who was charged and who actually paid. */
+.pagou-invoice-admin .pagou-parties--inline { border: 0; border-radius: 0; margin: 14px 0 0; padding: 0; }
+.pagou-invoice-admin .pagou-party-record + .pagou-party-record { border-top: 1px solid var(--pi-line); margin-top: 12px; padding-top: 12px; }
+.pagou-invoice-admin .pagou-party-grid {
+    border-top: 1px solid var(--pi-line); color: var(--pi-ink); font-size: 14px; font-weight: 600; gap: 24px; padding: 14px 0 4px;
+}
+.pagou-invoice-admin .pagou-parties h4 {
+    color: var(--pi-muted); font-size: 10.5px; font-weight: 650; letter-spacing: .06em; margin: 0 0 6px; text-transform: uppercase;
+}
+.pagou-invoice-admin .pagou-parties small { color: var(--pi-muted); font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 400; margin-top: 3px; }
+.pagou-invoice-admin .pagou-party-empty { color: var(--pi-muted); font-size: 13px; font-weight: 400; }
+.pagou-invoice-admin .pagou-parties .pagou-party-note {
+    background: var(--pi-warn-bg); border: 1px solid var(--pi-warn-line); border-radius: 999px; color: var(--pi-warn);
+    display: inline-block; font-size: 11.5px; font-weight: 600; margin-top: 7px; padding: 2px 9px;
+}
+
+/* Identifiers: one aligned list, shared by the parties and the card. */
+.pagou-invoice-admin .pagou-party-references { display: block; margin-top: 10px; }
+.pagou-invoice-admin .pagou-invoice-ids { margin-top: 0; }
+.pagou-invoice-admin .pagou-invoice-id {
+    align-items: center; border-top: 1px solid var(--pi-line); display: grid; gap: 12px;
+    grid-template-columns: 112px minmax(0, 1fr) 32px; min-width: 0; padding: 8px 0;
+}
+.pagou-invoice-admin .pagou-invoice-id > span { color: var(--pi-muted); font-size: 12px; font-weight: 600; }
+.pagou-invoice-admin .pagou-invoice-id code {
+    background: var(--pi-soft); border: 1px solid var(--pi-line); border-radius: 6px; color: var(--pi-ink); display: block;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; overflow: hidden;
+    padding: 6px 10px; text-overflow: ellipsis; white-space: nowrap;
+}
+.pagou-invoice-admin .pagou-invoice-copy {
+    align-items: center; background: var(--pi-surface); border: 1px solid var(--pi-line); border-radius: 7px; color: var(--pi-muted);
+    cursor: pointer; display: inline-flex; height: 32px; justify-content: center; padding: 0; transition: background-color .12s, border-color .12s, color .12s; width: 32px;
+}
+.pagou-invoice-admin .pagou-invoice-copy .pagou-icon + .pagou-icon { display: none; }
+.pagou-invoice-admin .pagou-invoice-copy:hover { background: var(--pi-accent-soft); border-color: var(--pi-accent); color: var(--pi-accent); }
+.pagou-invoice-admin .pagou-invoice-copy:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
+.pagou-invoice-admin .pagou-invoice-copy:disabled { cursor: default; opacity: .55; }
+.pagou-invoice-admin .pagou-invoice-copy.is-copied { background: var(--pi-ok-bg); border-color: var(--pi-ok-line); color: var(--pi-ok); }
+.pagou-invoice-admin .pagou-invoice-copy.is-copied .pagou-icon { display: none; }
+.pagou-invoice-admin .pagou-invoice-copy.is-copied .pagou-icon + .pagou-icon { display: block; }
+
+/* Refund: its own panel, toned by its state. */
+.pagou-invoice-refund { border: 1px solid; border-radius: 9px; margin-top: 14px; padding: 12px 14px; }
+.pagou-invoice-refund-main { align-items: center; display: grid; gap: 12px; grid-template-columns: 32px minmax(0, 1fr) auto; }
+.pagou-invoice-refund-icon {
+    align-items: center; background: var(--pi-surface); border: 1px solid currentColor; border-radius: 50%;
+    display: inline-flex; height: 32px; justify-content: center; width: 32px;
+}
+.pagou-invoice-refund-copy { min-width: 0; }
+.pagou-invoice-refund-copy strong { color: var(--pi-ink); display: block; font-size: 13.5px; font-weight: 650; }
+.pagou-invoice-refund-copy small { color: var(--pi-text); display: block; font-size: 12px; margin-top: 1px; }
+.pagou-invoice-refund-amount { color: var(--pi-ink); font-size: 16px; font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+.pagou-invoice-admin .pagou-invoice-refund .pagou-invoice-id { border-top-color: currentColor; margin-top: 12px; padding-bottom: 0; }
+.pagou-invoice-admin .pagou-invoice-refund .pagou-invoice-id code { background: var(--pi-surface); }
+.pagou-invoice-refund--success { background: var(--pi-ok-bg); border-color: var(--pi-ok-line); }
+.pagou-invoice-refund--success .pagou-invoice-refund-icon { color: var(--pi-ok); }
+.pagou-invoice-refund--warning { background: var(--pi-warn-bg); border-color: var(--pi-warn-line); }
+.pagou-invoice-refund--warning .pagou-invoice-refund-icon { color: var(--pi-warn); }
+.pagou-invoice-refund--danger { background: var(--pi-bad-bg); border-color: var(--pi-bad-line); }
+.pagou-invoice-refund--danger .pagou-invoice-refund-icon { color: var(--pi-bad); }
+.pagou-invoice-refund--info { background: var(--pi-info-bg); border-color: var(--pi-info-line); }
+.pagou-invoice-refund--info .pagou-invoice-refund-icon { color: var(--pi-info); }
+.pagou-invoice-refund .pagou-invoice-id { color: var(--pi-line); }
+.pagou-invoice-refund--success .pagou-invoice-id { color: var(--pi-ok-line); }
+.pagou-invoice-refund--warning .pagou-invoice-id { color: var(--pi-warn-line); }
+.pagou-invoice-refund--danger .pagou-invoice-id { color: var(--pi-bad-line); }
+.pagou-invoice-refund--info .pagou-invoice-id { color: var(--pi-info-line); }
+
+.pagou-invoice-admin footer { border-top: 1px solid var(--pi-line); display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 12px; padding-top: 12px; }
+.pagou-invoice-action { margin: 0; }
+.pagou-invoice-admin .pagou-invoice-button { border-radius: 6px; font-weight: 600; text-decoration: none; }
+.pagou-invoice-admin .pagou-invoice-button--primary { background: var(--pi-accent); border-color: var(--pi-accent); color: #fff; }
+.pagou-invoice-admin .pagou-invoice-button--primary:hover,
+.pagou-invoice-admin .pagou-invoice-button--primary:focus,
+.pagou-invoice-admin .pagou-invoice-button--primary:active { background: #1f46b8; border-color: #1f46b8; color: #fff; }
+.pagou-invoice-admin .pagou-invoice-button--danger { background: var(--pi-surface); border-color: #e5a1a8; color: #b42331; }
+/* Hosted boleto pages sit on the left; cancelling stays on the right. */
+.pagou-invoice-admin .pagou-invoice-documents { display: flex; flex-wrap: wrap; gap: 8px; margin-right: auto; }
+.pagou-invoice-admin .pagou-invoice-button--link { align-items: center; background: var(--pi-surface); border-color: var(--pi-line); color: var(--pi-ink); display: inline-flex; gap: 6px; text-decoration: none; }
+.pagou-invoice-admin .pagou-invoice-button--link:hover,
+.pagou-invoice-admin .pagou-invoice-button--link:focus { border-color: var(--pi-accent); color: var(--pi-accent); text-decoration: none; }
+.pagou-invoice-admin .pagou-invoice-button--link .pagou-icon { flex: 0 0 auto; }
+.pagou-invoice-admin .pagou-invoice-button--danger:hover,
+.pagou-invoice-admin .pagou-invoice-button--danger:focus,
+.pagou-invoice-admin .pagou-invoice-button--danger:active { background: #fff5f5; border-color: #b42331; color: #b42331; }
+.pagou-invoice-admin .pagou-invoice-button:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
+
+/* Dark admin themes. */
+html.dark .pagou-invoice-admin, body.dark .pagou-invoice-admin, body[data-theme="dark"] .pagou-invoice-admin {
+    --pi-accent: #6a8bf2; --pi-accent-soft: rgb(106 139 242 / 14%); --pi-ink: #e5e7eb; --pi-text: #c4cad4; --pi-muted: #9aa4b2;
+    --pi-line: #343b46; --pi-soft: #252a31; --pi-surface: #1f2328;
+    --pi-ok: #4ade80; --pi-ok-bg: rgb(74 222 128 / 9%); --pi-ok-line: rgb(74 222 128 / 28%);
+    --pi-warn: #fbbf24; --pi-warn-bg: rgb(251 191 36 / 9%); --pi-warn-line: rgb(251 191 36 / 28%);
+    --pi-bad: #fb7185; --pi-bad-bg: rgb(251 113 133 / 9%); --pi-bad-line: rgb(251 113 133 / 30%);
+    --pi-info: #8fb0ff; --pi-info-bg: rgb(143 176 255 / 9%); --pi-info-line: rgb(143 176 255 / 28%);
+    background: var(--pi-surface);
+}
+
+@media (max-width: 640px) {
+    .pagou-invoice-admin { padding: 14px; }
+    .pagou-invoice-logo { width: 80px; }
+    .pagou-invoice-admin .pagou-party-grid { gap: 14px; grid-template-columns: minmax(0, 1fr); }
+    .pagou-invoice-admin .pagou-invoice-id { gap: 6px 10px; grid-template-columns: minmax(0, 1fr) 32px; }
+    .pagou-invoice-admin .pagou-invoice-id > span { grid-column: 1 / -1; }
+    .pagou-invoice-refund-main { grid-template-columns: 32px minmax(0, 1fr); }
+    .pagou-invoice-refund-amount { grid-column: 2; }
+    .pagou-invoice-admin footer, .pagou-invoice-action, .pagou-invoice-button, .pagou-invoice-admin .pagou-invoice-documents { width: 100%; }
+    .pagou-invoice-admin .pagou-invoice-button--link { justify-content: center; }
+}
+
+/* Central loading card shared visually with the addon and dashboard widget. */
+.pagou-invoice-loading-layer{position:absolute;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:20px;border-radius:6px;background:rgba(255,255,255,.74);backdrop-filter:blur(2px);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .16s ease,visibility .16s ease}
+.pagou-invoice-admin.is-loading .pagou-invoice-loading-layer{opacity:1;visibility:visible;pointer-events:auto;cursor:progress}
+.pagou-invoice-loading-panel{display:flex;align-items:center;gap:14px;min-width:min(310px,100%);max-width:100%;padding:15px 18px;border:1px solid #e4e8ef;border-radius:9px;background:#fff;color:#0b1220;box-shadow:0 1px 2px rgba(11,18,32,.04),0 10px 30px -15px rgba(11,18,32,.18)}
+.pagou-invoice-loading-copy{display:flex;flex-direction:column;gap:2px;min-width:0}
+.pagou-invoice-loading-headline{display:flex;align-items:baseline;gap:10px;min-width:0}
+.pagou-invoice-loading-copy strong{font-size:13.5px;line-height:1.35}
+.pagou-invoice-loading-copy small{font-size:11.5px;line-height:1.4;color:#5d6878}
+.pagou-invoice-loading-label{position:relative;color:#5d6878;white-space:nowrap}
+.pagou-invoice-loading-label::after{content:attr(data-pagou-label);position:absolute;inset:0;color:#0b1220;pointer-events:none;-webkit-mask-image:linear-gradient(90deg,transparent 25%,#000 50%,transparent 75%);mask-image:linear-gradient(90deg,transparent 25%,#000 50%,transparent 75%);-webkit-mask-size:200% 100%;mask-size:200% 100%;animation:pagou-invoice-shimmer-text 1.4s linear infinite}
+.pagou-invoice-loading-elapsed{display:none;flex:0 0 auto;color:#5d6878;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;line-height:1;font-variant-numeric:tabular-nums}
+.pagou-invoice-loading-elapsed.is-visible{display:inline}
+.pagou-invoice-pixel-loader{display:inline-grid;grid-template-columns:repeat(3,5px);gap:2px;flex:0 0 auto;color:inherit;line-height:1}
+.pagou-invoice-pixel-cell{display:block;width:5px;height:5px;border-radius:1px;background:currentColor;opacity:.15;animation:pagou-invoice-pixel-on 650ms ease-in-out infinite}
+.pagou-invoice-pixel-cell:nth-child(4){animation-delay:0ms}
+.pagou-invoice-pixel-cell:nth-child(1),.pagou-invoice-pixel-cell:nth-child(5),.pagou-invoice-pixel-cell:nth-child(7){animation-delay:90ms}
+.pagou-invoice-pixel-cell:nth-child(2),.pagou-invoice-pixel-cell:nth-child(6),.pagou-invoice-pixel-cell:nth-child(8){animation-delay:180ms}
+.pagou-invoice-pixel-cell:nth-child(3),.pagou-invoice-pixel-cell:nth-child(9){animation-delay:270ms}
+@keyframes pagou-invoice-pixel-on{0%,100%{opacity:.12}50%{opacity:1}}
+@keyframes pagou-invoice-shimmer-text{0%{-webkit-mask-position:200% 0;mask-position:200% 0}100%{-webkit-mask-position:-200% 0;mask-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.pagou-invoice-loading-layer{transition:none}.pagou-invoice-pixel-cell{animation:none;opacity:.35}.pagou-invoice-loading-label{color:#0b1220}.pagou-invoice-loading-label::after{display:none;animation:none}}
+
+.pagou-invoice-notice { margin: .8rem 0 0; color: #475569; font-size: 12px; }
+.pagou-invoice-notice[hidden] { display: none; }
+.pagou-invoice-admin.is-loading { min-height: 140px; }
+.pagou-invoice-pixel-loader { color: #2856d9; }
+
+.pagou-native-refund-notice { border: 1px solid #dbe3ef; border-left: 3px solid #2856d9; border-radius: 5px; background: linear-gradient(120deg, #f7f9ff, #fff); color: #334155; margin: 12px 0; padding: 12px 14px; text-align: left; }

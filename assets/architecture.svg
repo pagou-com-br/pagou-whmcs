@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1520" height="1160" viewBox="0 0 1520 1160" role="img" aria-labelledby="architecture-title architecture-desc">
+<title id="architecture-title">Arquitetura do módulo Pagou para WHMCS</title>
+<desc id="architecture-desc">Área do cliente, administração e cron acionam a integração Pagou. O runtime coordena uma fila persistente e adaptadores que acessam a API. Eventos assinados e conciliação alimentam a conferência de identidade, valor e fatura. O ledger controla o registro do recebimento nos mecanismos nativos do WHMCS. As tabelas ficam no banco do WHMCS e PDFs em armazenamento privado. Cartão depende de habilitação e usa tokenização no navegador; split é consultado, sem criação de regras.</desc>
+<defs>
+ <linearGradient id="canvas" x2="1" y2="1"><stop stop-color="#f3f8fd"/><stop offset="1" stop-color="#f0faf7"/></linearGradient>
+ <linearGradient id="module" x2="1" y2="1"><stop stop-color="#102f49"/><stop offset="1" stop-color="#091e31"/></linearGradient>
+ <linearGradient id="brand"><stop stop-color="#0071df"/><stop offset="1" stop-color="#00c589"/></linearGradient>
+ <filter id="shadow" x="-15%" y="-15%" width="140%" height="150%"><feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#08283f" flood-opacity=".06"/></filter>
+ <marker id="blue-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1 1 L 8 5 L 1 9" fill="none" stroke="#438abf" stroke-width="1.7"/></marker>
+ <marker id="green-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 1 1 L 8 5 L 1 9" fill="none" stroke="#16a581" stroke-width="1.7"/></marker>
+
+<symbol id="user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3"/></symbol>
+<symbol id="sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3v18M12 3v18M20 3v18M1 8h6M9 16h6M17 8h6"/></symbol>
+<symbol id="clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 3"/></symbol>
+<symbol id="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="2" width="18" height="20" rx="3"/><path d="m7 12 3 3 7-7M7 19h10"/></symbol>
+<symbol id="layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 10 5-10 5L2 7l10-5ZM2 12l10 5 10-5M2 17l10 5 10-5"/></symbol>
+<symbol id="queue" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="5" rx="1"/><rect x="3" y="10" width="18" height="5" rx="1"/><path d="M3 20h13m-3-3 3 3-3 3"/></symbol>
+<symbol id="plug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v5m6-5v5M6 8h12v4a6 6 0 0 1-12 0V8Zm6 10v5"/></symbol>
+<symbol id="shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 9 4v6c0 5-5 9-9 11-4-2-9-6-9-11V6l9-4Z"/><path d="m7 12 3 3 7-7"/></symbol>
+<symbol id="database" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 4 18 4 18 0V5M3 12c0 4 18 4 18 0"/></symbol>
+<symbol id="cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 19a5 5 0 0 1-1-10 7 7 0 0 1 13-3 6.5 6.5 0 0 1 0 13H6Z"/></symbol>
+<symbol id="bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 10a7 7 0 0 1 14 0v6l2 3H3l2-3v-6Zm4 12h6M12 1v2"/></symbol>
+</defs><g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif">
+<rect width="1520" height="1160" rx="28" fill="url(#canvas)"/>
+<rect x="48" y="48" width="54" height="5" rx="2.5" fill="url(#brand)"/>
+<text x="48" y="90" font-size="17" fill="#306979" font-weight="650" letter-spacing="2.5">ARQUITETURA DO MÓDULO</text>
+<text x="48" y="148" font-size="40" fill="#153249" font-weight="700" >Da fatura ao pagamento confirmado.</text>
+<text x="48" y="185" font-size="22" fill="#536d80" font-weight="400" >Uma operação integrada. Responsabilidades bem definidas.</text>
+<text x="1472" y="87" font-size="18" fill="#0071df" font-weight="700" text-anchor="end" letter-spacing="1">PAGOU / WHMCS</text>
+<text x="48" y="238" font-size="16" fill="#577181" font-weight="650" letter-spacing="1.8">SUA INSTALAÇÃO WHMCS</text>
+<text x="1162" y="238" font-size="16" fill="#577181" font-weight="650" letter-spacing="1.8">PLATAFORMA PAGOU</text>
+<rect x="410" y="214" width="700" height="754" rx="24" fill="url(#module)"/>
+<text x="440" y="247" font-size="15" fill="#8ae0c6" font-weight="650" letter-spacing="2">MÓDULO PAGOU</text>
+<text x="1080" y="247" font-size="15" fill="#b0c7d9" font-weight="400" text-anchor="end">Autoloader nativo</text>
+<rect x="48" y="266" width="300" height="148" rx="18" fill="#ffffff" stroke="#dbe6ef" filter="url(#shadow)"/>
+<use href="#user" x="70" y="287" width="28" height="28" color="#0071df"/>
+<text x="70" y="342" font-size="23" fill="#153249" font-weight="650" >Área do cliente</text>
+<text x="70" y="375" font-size="19" fill="#52697b" font-weight="400" >Fatura, QR Code e boleto</text>
+<text x="70" y="404" font-size="19" fill="#52697b" font-weight="400" >Estado da cobrança</text>
+<rect x="48" y="450" width="300" height="148" rx="18" fill="#ffffff" stroke="#dbe6ef" filter="url(#shadow)"/>
+<use href="#sliders" x="70" y="471" width="28" height="28" color="#0071df"/>
+<text x="70" y="526" font-size="23" fill="#153249" font-weight="650" >Administração</text>
+<text x="70" y="559" font-size="19" fill="#52697b" font-weight="400" >Configuração e diagnóstico</text>
+<text x="70" y="588" font-size="19" fill="#52697b" font-weight="400" >Histórico e pendências</text>
+<rect x="48" y="644" width="300" height="154" rx="18" fill="#ffffff" stroke="#dbe6ef" filter="url(#shadow)"/>
+<use href="#clock" x="70" y="665" width="28" height="28" color="#0071df"/>
+<text x="70" y="720" font-size="23" fill="#153249" font-weight="650" >Agendamento</text>
+<text x="70" y="753" font-size="19" fill="#52697b" font-weight="400" >Cron diário do WHMCS</text>
+<text x="70" y="782" font-size="19" fill="#52697b" font-weight="400" >Worker a cada minuto</text>
+<rect x="48" y="840" width="300" height="148" rx="18" fill="#ffffff" stroke="#dbe6ef" filter="url(#shadow)"/>
+<use href="#check" x="70" y="861" width="28" height="28" color="#0071df"/>
+<text x="70" y="916" font-size="23" fill="#153249" font-weight="650" >Financeiro nativo</text>
+<text x="70" y="949" font-size="19" fill="#52697b" font-weight="400" >Recebimentos e transações</text>
+<text x="70" y="978" font-size="19" fill="#52697b" font-weight="400" >Vínculo com a fatura</text>
+<rect x="440" y="268" width="640" height="134" rx="18" fill="#12334d" stroke="#31556d" filter="url(#shadow)"/>
+<use href="#layers" x="462" y="289" width="28" height="28" color="#79c8ff"/>
+<text x="462" y="344" font-size="23" fill="#f4fbff" font-weight="650" >Coordenação da integração</text>
+<text x="462" y="377" font-size="19" fill="#b4c9d9" font-weight="400" >Gateways, hooks e serviços de execução</text>
+<rect x="440" y="450" width="296" height="155" rx="18" fill="#12334d" stroke="#31556d" filter="url(#shadow)"/>
+<use href="#queue" x="462" y="471" width="28" height="28" color="#79c8ff"/>
+<text x="462" y="526" font-size="23" fill="#f4fbff" font-weight="650" >Fila de operações</text>
+<text x="462" y="559" font-size="19" fill="#b4c9d9" font-weight="400" >Operações persistentes</text>
+<text x="462" y="588" font-size="19" fill="#b4c9d9" font-weight="400" >Idempotência e leases</text>
+<rect x="774" y="450" width="306" height="155" rx="18" fill="#12334d" stroke="#31556d" filter="url(#shadow)"/>
+<use href="#plug" x="796" y="471" width="28" height="28" color="#79c8ff"/>
+<text x="796" y="526" font-size="23" fill="#f4fbff" font-weight="650" >Adaptadores</text>
+<text x="796" y="559" font-size="19" fill="#b4c9d9" font-weight="400" >Pix · Boleto · Cartão*</text>
+<text x="796" y="588" font-size="19" fill="#b4c9d9" font-weight="400" >Regras e contratos da API</text>
+<rect x="440" y="678" width="296" height="155" rx="18" fill="#103e3c" stroke="#217a6b" filter="url(#shadow)"/>
+<use href="#check" x="462" y="699" width="28" height="28" color="#55d6b2"/>
+<text x="462" y="754" font-size="23" fill="#f4fbff" font-weight="650" >Conferência financeira</text>
+<text x="462" y="787" font-size="19" fill="#b4c9d9" font-weight="400" >Identidade, valor e fatura</text>
+<text x="462" y="816" font-size="19" fill="#b4c9d9" font-weight="400" >Ledger de recebimentos</text>
+<rect x="774" y="678" width="306" height="155" rx="18" fill="#12334d" stroke="#31556d" filter="url(#shadow)"/>
+<use href="#shield" x="796" y="699" width="28" height="28" color="#79c8ff"/>
+<text x="796" y="754" font-size="23" fill="#f4fbff" font-weight="650" >Eventos e conciliação</text>
+<text x="796" y="787" font-size="19" fill="#b4c9d9" font-weight="400" >Assinatura e deduplicação</text>
+<text x="796" y="816" font-size="19" fill="#b4c9d9" font-weight="400" >Consulta do estado remoto</text>
+<rect x="440" y="870" width="640" height="72" rx="14" fill="#0e2940" stroke="#294b62"/>
+<use href="#database" x="460" y="890" width="28" height="28" color="#91b5ce"/>
+<text x="506" y="898" font-size="13" fill="#a1c5db" font-weight="650" letter-spacing="1.3">PERSISTÊNCIA DO MÓDULO</text>
+<text x="506" y="923" font-size="19" fill="#d5e6f0" font-weight="400" >Banco WHMCS + armazenamento privado de PDFs</text>
+<rect x="1162" y="268" width="310" height="337" rx="18" fill="#ffffff" stroke="#dbe6ef" filter="url(#shadow)"/>
+<use href="#cloud" x="1184" y="289" width="28" height="28" color="#0071df"/>
+<text x="1184" y="344" font-size="23" fill="#153249" font-weight="650" >API Pagou</text>
+<text x="1184" y="377" font-size="19" fill="#52697b" font-weight="400" >Pix e boleto</text>
+<text x="1184" y="406" font-size="19" fill="#52697b" font-weight="400" >Cartão e dados de split*</text>
+<path d="M1184 442H1450" stroke="#dfebf0"/>
+<text x="1184" y="480" font-size="20" fill="#3c617b" font-weight="500" >Criação e consulta</text>
+<text x="1184" y="511" font-size="19" fill="#52697b" font-weight="400" >Cancelamento e devolução</text>
+<rect x="1184" y="541" width="108" height="34" rx="17" fill="#eef7ff"/>
+<text x="1238" y="564" font-size="15" fill="#0071df" font-weight="650" text-anchor="middle">HTTPS</text>
+<rect x="1162" y="678" width="310" height="155" rx="18" fill="#ffffff" stroke="#dbe6ef" filter="url(#shadow)"/>
+<use href="#bell" x="1184" y="699" width="28" height="28" color="#0071df"/>
+<text x="1184" y="754" font-size="23" fill="#153249" font-weight="650" >Notificações</text>
+<text x="1184" y="787" font-size="19" fill="#52697b" font-weight="400" >Eventos assinados</text>
+<text x="1184" y="816" font-size="19" fill="#52697b" font-weight="400" >Atualizações de pagamento</text>
+<path d="M348 340H440" fill="none" stroke="#438abf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue-arrow)"/>
+<path d="M348 524H378Q386 524 386 516V381Q386 373 394 373H440" fill="none" stroke="#438abf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue-arrow)"/>
+<path d="M348 721H382Q390 721 390 713V551Q390 543 398 543H440" fill="none" stroke="#438abf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue-arrow)"/>
+<path d="M760 402V425H588V450" fill="none" stroke="#438abf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue-arrow)"/>
+<path d="M760 425H927V450" fill="none" stroke="#438abf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue-arrow)"/>
+<path d="M736 527H774" fill="none" stroke="#438abf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue-arrow)"/>
+<path d="M1080 527H1162" fill="none" stroke="#438abf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue-arrow)" marker-start="url(#blue-arrow)"/>
+<path d="M1317 605V678" fill="none" stroke="#16a581" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#green-arrow)" stroke-dasharray="7 7"/>
+<path d="M1162 755H1080" fill="none" stroke="#16a581" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#green-arrow)" stroke-dasharray="7 7"/>
+<path d="M927 678V605" fill="none" stroke="#438abf" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#blue-arrow)" marker-start="url(#blue-arrow)"/>
+<path d="M774 755H736" fill="none" stroke="#16a581" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#green-arrow)"/>
+<path d="M440 755H402Q392 755 392 765V914H348" fill="none" stroke="#16a581" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#green-arrow)"/>
+<text x="438" y="647" font-size="13" fill="#91b4cd" font-weight="500" letter-spacing="1.2">OPERAÇÕES E RECEBIMENTOS CONFERIDOS</text>
+<path d="M440 1003H480" stroke="#438abf" stroke-width="2.5"/>
+<text x="492" y="1009" font-size="17" fill="#536d80" font-weight="400" >Chamadas e consultas</text>
+<path d="M744 1003H786" stroke="#16a581" stroke-width="2.5" stroke-dasharray="7 7"/>
+<text x="798" y="1009" font-size="17" fill="#536d80" font-weight="400" >Notificações verificadas</text>
+<path d="M48 1040H1472" stroke="#d5e5e9"/>
+<text x="48" y="1080" font-size="19" fill="#486176" font-weight="400" >* Cartão: habilitação e homologação; tokenização no navegador e referências remotas no servidor.</text>
+<text x="48" y="1115" font-size="19" fill="#486176" font-weight="400" >Split: consulta dos rateios retornados pela API, sem criação de regras. Visão lógica com conexões resumidas.</text>
+</g></svg>

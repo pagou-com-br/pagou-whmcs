@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<ruleset name="Pagou WHMCS">
+    <description>Padrao de codigo do modulo oficial Pagou para WHMCS.</description>
+    <file>package/modules</file>
+    <file>tests</file>
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+    <exclude-pattern>*/var/*</exclude-pattern>
+    <arg name="basepath" value="."/>
+    <arg name="colors"/>
+    <arg name="extensions" value="php"/>
+    <arg name="warning-severity" value="0"/>
+    <rule ref="PSR12">
+        <exclude name="PSR1.Classes.ClassDeclaration.MultipleClasses"/>
+    </rule>
+    <rule ref="Generic.Files.LineLength">
+        <properties>
+            <property name="lineLimit" value="160"/>
+            <property name="absoluteLineLimit" value="0"/>
+        </properties>
+    </rule>
+</ruleset>

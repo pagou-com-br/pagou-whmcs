@@ -1,0 +1,35 @@
+{
+  "schema": "1.0",
+  "type": "whmcs-gateways",
+  "name": "pagou_creditcard",
+  "license": "MIT",
+  "category": "payments",
+  "description": {
+    "name": "Pagou Cartão de Crédito",
+    "tagline": "Processe cartões com tokenização segura e operação integrada ao WHMCS.",
+    "long": "Gateway oficial da Pagou para cartão de crédito no WHMCS, com tokenização no navegador, referências remotas e conciliação. O checkout aceita uma parcela com captura automática e depende de habilitação e homologação técnica e financeira.",
+    "features": [
+      "Tokenização no navegador, sem armazenar número completo ou CVV no WHMCS",
+      "Referências remotas e validação das sessões de retorno",
+      "Checkout à vista com captura automática, sujeito à habilitação",
+      "Acompanhamento de transações e conciliação com trilha de auditoria",
+      "Ativação condicionada ao diagnóstico técnico e à homologação"
+    ]
+  },
+  "logo": {
+    "filename": "logo.png"
+  },
+  "support": {
+    "homepage": "https://pagou.com.br",
+    "learn_more": "https://pagou.com.br",
+    "email": "suporte@pagou.com.br",
+    "support_url": "https://suporte.pagou.com.br",
+    "docs_url": "https://docs.pagou.com.br"
+  },
+  "authors": [
+    {
+      "name": "Pagou",
+      "homepage": "https://pagou.com.br"
+    }
+  ]
+}

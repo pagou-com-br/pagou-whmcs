@@ -1,0 +1,25 @@
+{
+  "data": {
+    "id": "pix_split_sanitized_0001",
+    "status": 4,
+    "amount": "150.00",
+    "payload": {
+      "data": "00020101021226890014br.gov.bcb.pix2567example.invalid/pix_split_sanitized_0001",
+      "image": "data:image/png;base64,c2FuaXRpemVk"
+    },
+    "split": {
+      "fee": "2.50",
+      "status": 4,
+      "allocations": [
+        {
+          "id": "allocation_sanitized_0001",
+          "customer_id": "recipient_sanitized_0001",
+          "type": "percentage",
+          "value": "12.3456",
+          "resolved_value": "18.52",
+          "status": 4
+        }
+      ]
+    }
+  }
+}

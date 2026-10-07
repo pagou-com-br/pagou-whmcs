@@ -1,0 +1,29 @@
+{
+  "data": {
+    "id": "charge_split_sanitized_0001",
+    "status": "registered",
+    "amount": "200.00",
+    "due_date": "2026-09-10",
+    "payload": {
+      "line": "00190.00009 01234.567890 12345.678901 2 12340000020000",
+      "bar_code": "00192123400000200000000012345678901234567890",
+      "data": "00020101021226890014br.gov.bcb.pix2567example.invalid/charge_split_sanitized_0001",
+      "image": "data:image/png;base64,c2FuaXRpemVk",
+      "pdf_url": "https://fatura.pagou.com.br/api/generatePDF/charge_split_sanitized_0001"
+    },
+    "split": {
+      "fee": "3.00",
+      "status": 6,
+      "allocations": [
+        {
+          "id": "allocation_sanitized_0002",
+          "customer_id": "recipient_sanitized_0002",
+          "type": "fixed",
+          "value": "25.00",
+          "resolved_value": "25.00",
+          "status": 6
+        }
+      ]
+    }
+  }
+}

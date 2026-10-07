@@ -1,0 +1,10 @@
+{
+  "id": "pix_sanitized_0001",
+  "status": "pending",
+  "amount": "12.34",
+  "pix": {
+    "copy_paste": "00020101021226850014br.gov.bcb.pix2563example.invalid/payload520400005303986540512.345802BR5912CLIENT TESTE6009SAO PAULO62070503***6304ABCD",
+    "qr_code_url": "https://example.invalid/qr/pix_sanitized_0001"
+  },
+  "expires_at": "2026-08-22T15:00:00Z"
+}
