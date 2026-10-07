@@ -72,7 +72,7 @@ final class AdminInvoiceEndpointTest extends TestCase
         mkdir($temporary . '/modules/gateways/pagou', 0700, true);
         copy($root . '/tests/Fixtures/Whmcs/admin-invoice-endpoint.php', $temporary . '/init.php');
         copy($root . '/package/modules/addons/pagou_payments/' . $endpoint, $temporary . '/modules/addons/pagou_payments/' . $endpoint);
-        file_put_contents($temporary . '/modules/gateways/pagou/bootstrap.php', '<?php require ' . var_export($root . '/vendor/autoload.php', true) . ';');
+        file_put_contents($temporary . '/modules/gateways/pagou/bootstrap.php', '<?php require ' . var_export($root . '/package/modules/gateways/pagou/bootstrap.php', true) . ';');
         try {
             $process = proc_open([PHP_BINARY, $temporary . '/modules/addons/pagou_payments/' . $endpoint, json_encode($scenario, JSON_THROW_ON_ERROR)], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
             self::assertIsResource($process);

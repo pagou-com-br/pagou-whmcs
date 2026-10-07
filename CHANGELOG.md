@@ -2,6 +2,11 @@
 
 Este histórico descreve as versões da distribuição pública do Pagou para WHMCS.
 
+## Não lançado
+
+- Ajusta a fixture dos endpoints administrativos para utilizar o autoloader
+  nativo também no Linux, sem alteração no pacote instalável.
+
 ## 0.3.0-rc.1 (2026-10-07)
 
 Primeira candidata da distribuição pública, sob licença MIT.
