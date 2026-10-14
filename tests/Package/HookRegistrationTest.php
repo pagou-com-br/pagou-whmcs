@@ -18,6 +18,27 @@ final class HookRegistrationTest extends TestCase
         self::assertStringNotContainsString("'ClientAreaHeadOutput'", $hooks);
     }
 
+    public function testAWrongDocumentIsRefusedOnTheProfileWithoutEverBlockingItOnAFailure(): void
+    {
+        $hooks = file_get_contents(dirname(__DIR__, 2) . '/package/modules/addons/pagou_payments/hooks.php');
+
+        self::assertIsString($hooks);
+        self::assertStringContainsString("add_hook('ClientDetailsValidation'", $hooks);
+        self::assertStringContainsString('ClientDocumentValidation::errors($vars, $settings)', $hooks);
+        self::assertStringContainsString('conferência local do CPF ou CNPJ indisponível', $hooks);
+    }
+
+    public function testACorrectedProfileIssuesRefusedChargesOnceTheRequestEnds(): void
+    {
+        $hooks = file_get_contents(dirname(__DIR__, 2) . '/package/modules/addons/pagou_payments/hooks.php');
+
+        self::assertIsString($hooks);
+        self::assertStringContainsString("add_hook('ClientEdit'", $hooks);
+        self::assertStringContainsString('register_shutdown_function', $hooks);
+        self::assertStringContainsString('->retryRefusedCharges($clientId)', $hooks);
+        self::assertStringContainsString('preparar de novo as cobranças recusadas do cliente', $hooks);
+    }
+
     public function testClientAssetsPreventDuplicateInitialization(): void
     {
         $root = dirname(__DIR__, 2);

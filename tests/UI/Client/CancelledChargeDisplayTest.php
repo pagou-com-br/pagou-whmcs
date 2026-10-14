@@ -23,7 +23,8 @@ final class CancelledChargeDisplayTest extends TestCase
         $attempt = $store->ensureCurrent(109, 7, 'pix', 1200, '2026-10-10');
         $store->complete($attempt['id'], 'remote-109', 'pending', [
             'state' => 'pending', 'amount' => '12,00', 'copyPaste' => 'pix-code-109', 'qrCodeImageUrl' => self::QR,
-            'expiresAt' => '2026-10-11T12:00:00Z',
+            // Still valid when the test runs: an expired Pix would be hidden for another reason.
+            'expiresAt' => (new \DateTimeImmutable('+1 day', new \DateTimeZone('UTC')))->format('Y-m-d\TH:i:s\Z'),
         ]);
         self::assertStringContainsString('pix-code-109', $this->render($pdo, 'pix'));
 
@@ -157,7 +158,8 @@ final class CancelledChargeDisplayTest extends TestCase
     private function assertCancelled(string $html, string $label): void
     {
         self::assertStringContainsString('<span class="pagou-status">' . $label . '</span>', $html);
-        self::assertStringContainsString('<p role="status">Não efetue um novo pagamento com os dados desta cobrança.</p>', $html);
+        self::assertStringContainsString('<div class="pagou-notice" role="status">', $html);
+        self::assertStringContainsString('<strong>Não efetue um novo pagamento com os dados desta cobrança.</strong></div></div>', $html);
         foreach (
             [
                 'Preparando', 'Aguardando pagamento', 'Pronto para pagamento', 'pagou-qr', 'pagou-copy', 'Linha digitável',

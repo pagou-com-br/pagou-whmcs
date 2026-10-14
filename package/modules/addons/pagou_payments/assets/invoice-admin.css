@@ -127,8 +127,8 @@
 .pagou-invoice-admin .pagou-invoice-button--danger:active { background: #fff5f5; border-color: #b42331; color: #b42331; }
 .pagou-invoice-admin .pagou-invoice-button:focus-visible { outline: 2px solid var(--pi-accent); outline-offset: 2px; }
 
-/* Dark admin themes. */
-html.dark .pagou-invoice-admin, body.dark .pagou-invoice-admin, body[data-theme="dark"] .pagou-invoice-admin {
+/* Dark admin themes, including DarkReader-based ones (html[data-darkreader-scheme]). */
+html.dark .pagou-invoice-admin, body.dark .pagou-invoice-admin, body[data-theme="dark"] .pagou-invoice-admin, html[data-darkreader-scheme="dark"] .pagou-invoice-admin {
     --pi-accent: #6a8bf2; --pi-accent-soft: rgb(106 139 242 / 14%); --pi-ink: #e5e7eb; --pi-text: #c4cad4; --pi-muted: #9aa4b2;
     --pi-line: #343b46; --pi-soft: #252a31; --pi-surface: #1f2328;
     --pi-ok: #4ade80; --pi-ok-bg: rgb(74 222 128 / 9%); --pi-ok-line: rgb(74 222 128 / 28%);
@@ -174,6 +174,8 @@ html.dark .pagou-invoice-admin, body.dark .pagou-invoice-admin, body[data-theme=
 
 .pagou-invoice-notice { margin: .8rem 0 0; color: #475569; font-size: 12px; }
 .pagou-invoice-notice[hidden] { display: none; }
+/* Why the charge failed: the alert tone of the state badge, in both themes. */
+.pagou-invoice-notice--failure { background: var(--pi-bad-bg); border: 1px solid var(--pi-bad-line); border-radius: 8px; color: var(--pi-bad); line-height: 1.5; padding: .55rem .7rem; }
 .pagou-invoice-admin.is-loading { min-height: 140px; }
 .pagou-invoice-pixel-loader { color: #2856d9; }
 

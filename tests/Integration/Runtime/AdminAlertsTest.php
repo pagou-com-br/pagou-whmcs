@@ -183,6 +183,15 @@ final class AdminAlertsTest extends TestCase
         self::assertNull((new OperationalSettings($this->pdo))->get('admin_alert_findings'));
     }
 
+    public function testAChargeNotIssuedForTheCustomerDataIsNoFinancialAlert(): void
+    {
+        $this->attempt('attempt-106', 106);
+        $this->finding('finding-6', 'attempt-106', 'charge_issuance_refused', 'open', '-1 hour');
+
+        self::assertSame('idle', $this->alerts()->run()['findings']);
+        self::assertSame([], $this->calls);
+    }
+
     public function testUnknownFindingTypesUseAGenericPortugueseLabel(): void
     {
         $this->finding('finding-x', null, 'internal_code_without_label', 'open', '-1 minute');

@@ -210,7 +210,9 @@ final class AdminAlerts
         $statement = $this->pdo->query(
             'SELECT f.id, f.finding_type, f.details_json, a.invoice_id FROM pagou_reconciliation_findings f '
             . 'LEFT JOIN pagou_payment_attempts a ON a.id = f.attempt_id '
-            . "WHERE f.status IN ('open', 'pending') ORDER BY f.detected_at_utc DESC, f.id DESC LIMIT " . self::TRACKED_LIMIT
+            // A charge refused for the customer data is listed in Pendências, but is no financial risk.
+            . "WHERE f.status IN ('open', 'pending') AND f.finding_type <> 'charge_issuance_refused' "
+            . 'ORDER BY f.detected_at_utc DESC, f.id DESC LIMIT ' . self::TRACKED_LIMIT
         );
         $items = [];
         $economicKeys = [];

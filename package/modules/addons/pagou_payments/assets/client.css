@@ -362,6 +362,40 @@
 .pagou-document-pixels span:nth-child(3),.pagou-document-pixels span:nth-child(9) { animation-delay: 270ms; }
 @keyframes pagou-client-pixel { 0%,100% { opacity: .12; } 50% { opacity: 1; } }
 @media(prefers-reduced-motion:reduce) { .pagou-document-pixels span { animation: none; opacity: .5; } }
+
+/* A closed charge: what happened and what to do, in the shape of the loading notice. */
+.pagou-notice {
+    align-items: flex-start; display: flex; gap: 12px; padding: 14px; margin: 1rem 0 0;
+    border: 1px solid #e4e8ef; border-radius: 9px; background: #f8fafc; color: #0b1220;
+}
+.pagou-notice__icon { color: #64748b; flex: 0 0 auto; height: 20px; margin-top: 1px; width: 20px; }
+.pagou-notice strong { display: block; font-size: 14px; font-weight: 600; line-height: 1.4; }
+.pagou-notice small { color: #5d6878; display: block; font-size: 12.5px; line-height: 1.5; margin-top: 4px; }
+.pagou-payment[data-pagou-state="failed"] .pagou-notice { background: #fffaf4; border-color: #f8dcc0; }
+.pagou-payment[data-pagou-state="failed"] .pagou-notice__icon { color: #c2610c; }
+.pagou-payment[data-pagou-state="failed"] .pagou-status { background: #fff4e8; border-color: #f8d2ab; color: #b45309; }
+.pagou-document-form { margin-top: 12px; }
+.pagou-document-form label { color: #344054; display: block; font-size: 12.5px; font-weight: 600; margin: 0 0 6px; }
+/* Stacked at full width: the payment column is narrow on every theme. */
+.pagou-document-row { display: grid; gap: 8px; }
+.pagou-document-row input {
+    background: #fff; border: 1px solid #cfd6e2; border-radius: 6px; color: #0b1220; width: 100%;
+    font-size: 14px; font-variant-numeric: tabular-nums; min-height: 38px; min-width: 0; padding: 0 10px;
+}
+.pagou-document-row input:focus { border-color: #2856d9; box-shadow: 0 0 0 3px rgb(40 86 217 / 15%); outline: none; }
+.pagou-document-row input[aria-invalid="true"] { border-color: #d92d20; }
+.pagou-document-row button {
+    background: #2856d9; border: 1px solid #2856d9; border-radius: 6px; color: #fff; cursor: pointer; width: 100%;
+    font-size: 13.5px; font-weight: 600; min-height: 38px; padding: 0 14px;
+}
+.pagou-document-row button:hover, .pagou-document-row button:focus { background: #1f46b8; border-color: #1f46b8; }
+.pagou-document-row button:disabled { cursor: progress; opacity: .7; }
+.pagou-document-feedback { color: #b42318; font-size: 12.5px; line-height: 1.45; margin: 6px 0 0; }
+.pagou-payment[data-pagou-state="cancel_requested"] .pagou-status,
+.pagou-payment[data-pagou-state="cancelled"] .pagou-status,
+.pagou-payment[data-pagou-state="canceled"] .pagou-status,
+.pagou-payment[data-pagou-state="expired"] .pagou-status,
+.pagou-payment[data-pagou-state="superseded"] .pagou-status { background: #f3f5f8; border-color: #dfe4ec; color: #475467; }
 .pagou-card-progress {display:flex;align-items:center;justify-content:center;gap:10px;margin:20px 0 10px}
 
 /* Loader shown while the invoice reloads with the chosen Pagou method. */

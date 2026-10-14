@@ -155,14 +155,22 @@ final class WhmcsRuntimeSchedulingTest extends TestCase
         self::assertSame(['cancel_boleto', 'cancel_pix'], $types);
     }
 
-    public function testPaidInvoiceCancelsTheOpenBoletoOnceAndAcceptsOneAlreadyCancelled(): void
+    /** @return array<string, array{int, int}> */
+    public static function settledBoletos(): array
+    {
+        // Pagou status of the boleto when the cancellation is refused, and whether its payment is looked up.
+        return ['already cancelled' => [3, 0], 'already paid' => [4, 1]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('settledBoletos')]
+    public function testPaidInvoiceCancelsTheOpenBoletoOnceAndAcceptsOneAlreadySettled(int $remoteStatus, int $lookups): void
     {
         $pdo = $this->database();
         $store = new PaymentAttemptStore($pdo);
         $boleto = $store->ensureCurrent(10, 20, 'boleto', 1000, '2026-09-11');
         $store->complete($boleto['id'], 'remote-boleto', 'ready', ['state' => 'ready']);
         $api = static fn (string $command, array $parameters): array => ['result' => 'success'];
-        $cancelled = static fn (string $method, string $id) => (new \Pagou\Whmcs\Payment\Boleto\Api\BoletoResponseMapper())->charge(['id' => $id, 'amount' => 10, 'status' => 3, 'payload' => ['line' => 'line', 'bar_code' => 'barcode']]);
+        $cancelled = static fn (string $method, string $id) => (new \Pagou\Whmcs\Payment\Boleto\Api\BoletoResponseMapper())->charge(['id' => $id, 'amount' => 10, 'status' => $remoteStatus, 'payload' => ['line' => 'line', 'bar_code' => 'barcode']]);
         $runtime = new WhmcsRuntime($pdo, new AddonSettings(['worker_max_jobs' => '5']), new PdoOperationOutbox($pdo), $api, $cancelled);
 
         // The InvoicePaid hook asks first; the payment follow-up must not ask again.
@@ -170,10 +178,15 @@ final class WhmcsRuntimeSchedulingTest extends TestCase
         (new \Pagou\Whmcs\Payment\Ledger\Infrastructure\OutboxFollowUpQueue($pdo, new PdoOperationOutbox($pdo)))->cancelSiblings(10, \Pagou\Whmcs\Payment\Ledger\EconomicPaymentKey::fromRemotePayment(10, 'pagou', 'pix-receipt'));
         self::assertSame(1, (int) $pdo->query("SELECT COUNT(*) FROM pagou_payment_operations WHERE operation_type = 'cancel_boleto'")->fetchColumn());
 
-        // Pagou refuses to cancel twice; a boleto it reports cancelled is a finished cancellation.
+        // Pagou refuses to cancel a boleto it reports cancelled or paid; neither is an uncertain outcome.
         $runtime->runWorker();
         self::assertSame('succeeded', $pdo->query("SELECT status FROM pagou_payment_operations WHERE operation_type = 'cancel_boleto'")->fetchColumn());
-        self::assertSame(0, (int) $pdo->query("SELECT COUNT(*) FROM pagou_payment_operations WHERE status = 'uncertain'")->fetchColumn());
+        self::assertSame(0, (int) $pdo->query("SELECT COUNT(*) FROM pagou_payment_operations WHERE operation_type = 'cancel_boleto' AND status = 'uncertain'")->fetchColumn());
+        // A boleto paid meanwhile is looked up at once, so its payment is booked without waiting.
+        self::assertSame($lookups, (int) $pdo->query("SELECT COUNT(*) FROM pagou_payment_operations WHERE operation_type = 'reconcile_payment'")->fetchColumn());
+        // The charge leaves "cancel requested" with the state Pagou reports, without a false alarm.
+        self::assertSame($remoteStatus === 3 ? 'cancelled' : 'paid', $store->find($boleto['id'])['status']);
+        self::assertSame(0, (int) $pdo->query("SELECT COUNT(*) FROM pagou_reconciliation_findings WHERE finding_type = 'payment_during_cancellation'")->fetchColumn());
     }
 
     private function database(): PDO
@@ -374,6 +387,9 @@ final class WhmcsRuntimeSchedulingTest extends TestCase
         self::assertFalse($runtime->scheduleInvoice(10));
         self::assertSame(0, (int) $pdo->query('SELECT COUNT(*) FROM pagou_payment_operations')->fetchColumn());
         self::assertSame('failed', $pdo->query('SELECT status FROM pagou_payment_attempts')->fetchColumn());
+        // Synchronous Pix has no queue operation, so the reason stays with the charge.
+        $failure = json_decode((string) $pdo->query('SELECT response_json FROM pagou_payment_attempts')->fetchColumn(), true)['failure'] ?? '';
+        self::assertMatchesRegularExpression('/^pix_(local_validation|request_rejected):[a-z_]+$/', $failure);
     }
 
     public function testPixInvoiceUsesCompactCopyActionAndPaymentReadyStatus(): void

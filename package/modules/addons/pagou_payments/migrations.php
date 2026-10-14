@@ -21,4 +21,5 @@ return [
     require __DIR__ . '/migrations/014_add_reporting_indexes.php',
     require __DIR__ . '/migrations/015_create_payment_parties.php',
     require __DIR__ . '/migrations/016_create_pix_refunds.php',
+    require __DIR__ . '/migrations/017_create_customer_notices.php',
 ];

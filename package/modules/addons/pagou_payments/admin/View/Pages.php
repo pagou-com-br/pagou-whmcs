@@ -368,6 +368,8 @@ final class Pages
             . $this->settingSelect($settings, 'cpf_field_id', 'Campo principal de CPF ou CNPJ', 'Obrigatório para criar cobranças.', $customFields)
             . $this->settingSelect($settings, 'cnpj_field_id', 'Campo alternativo de CNPJ', 'Opcional. O campo principal continua tendo prioridade.', $customFields)
             . '</div>' . $this->settingToggle($settings, 'prefer_cnpj', 'Priorizar o campo alternativo de CNPJ', 'Use somente quando CPF e CNPJ estiverem em campos separados. Selecionar o mesmo campo nas duas opções é seguro e não duplica a leitura.')
+            . $this->settingToggle($settings, 'document_check_on_profile', 'Conferir o CPF ou CNPJ no cadastro do cliente', 'Recusa no cadastro e na edição do perfil um número com dígitos verificadores errados, quando o país do cliente é Brasil. Campo vazio continua seguindo a regra do WHMCS.')
+            . $this->settingToggle($settings, 'notify_refused_charge', 'Avisar o cliente quando a cobrança não puder ser emitida', 'Envia ao cliente um e-mail com o motivo e o link da fatura quando o Pix ou o boleto é recusado pelos dados do cadastro, uma vez por fatura e por cadastro.')
             . '</section>';
 
         $processing = '<section id="pagou-processing" class="pagou-card pagou-anchor"><div class="pagou-card-title"><div>'

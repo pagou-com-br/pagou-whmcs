@@ -426,6 +426,23 @@ final class OperationalReadModelTest extends TestCase
         self::assertStringContainsString('Componentes do cartão: instalação incompleta', $model->admin('diagnostics')['supportReport']);
     }
 
+    public function testTheCardSaysWhyItCannotBeActivatedAndAHiddenGatewayWhereToShowIt(): void
+    {
+        $pdo = $this->pdo();
+        $model = new OperationalReadModel($pdo);
+        $detail = static fn (string $id): string => (string) array_column($model->admin('settings')['gatewayStatus'], 'detail', 'id')[$id];
+        self::assertSame('Execute o diagnóstico para verificar o cartão.', $detail('pagou_creditcard'));
+        // The reason kept by the last diagnostics, beside the disabled activation button.
+        $this->setting($pdo, 'diagnostics_card_reason', 'A conta Pagou ainda não liberou o cartão para esta chave de API. Confira a habilitação do cartão no aplicativo Pagou.', gmdate('Y-m-d H:i:s'));
+        self::assertStringStartsWith('A conta Pagou ainda não liberou o cartão', $detail('pagou_creditcard'));
+        $this->setting($pdo, 'card_max_installments', '6', gmdate('Y-m-d H:i:s'));
+        self::assertStringStartsWith('Esta versão aceita cartão à vista com captura automática.', $detail('pagou_creditcard'));
+        self::assertSame('Ainda não ativado no WHMCS.', $detail('pagou_pix'));
+
+        $pdo->exec("INSERT INTO tblpaymentgateways (gateway, setting, value) VALUES ('pagou_pix', 'visible', '')");
+        self::assertStringContainsString('marque "Show on Order Form" no gateway', $detail('pagou_pix'));
+    }
+
     public function testCardAvailabilityReadsNativeVisibilityWithoutChangingItOrClaimingRemoteApproval(): void
     {
         $pdo = $this->pdo();

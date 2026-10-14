@@ -65,6 +65,9 @@ use Pagou\Whmcs\Support\Uuid;
 /** Composition root used by the thin WHMCS entrypoints. */
 final class WhmcsRuntime
 {
+    /** Issuances run again after Pagou listed no boleto, before asking for a review. */
+    private const BOLETO_ISSUE_RETRIES = 3;
+
     /** How long a held Invoice Created waits for its boleto before going out without it. */
     private const INVOICE_EMAIL_HOLD_SECONDS = 1800;
 
@@ -74,10 +77,13 @@ final class WhmcsRuntime
     private readonly OperationScheduler $scheduler;
     /** @var Closure(string, string): (\Pagou\Whmcs\Payment\Pix\Dto\PixCharge|\Pagou\Whmcs\Payment\Boleto\Domain\BoletoCharge)|null */
     private readonly ?Closure $paymentLookup;
+    /** @var Closure(\Pagou\Whmcs\Payment\Boleto\Api\BoletoListFilter): list<\Pagou\Whmcs\Payment\Boleto\Domain\BoletoCharge>|null */
+    private readonly ?Closure $boletoList;
 
     /**
      * @param callable(string, array<string, mixed>): array<string, mixed> $localApi
      * @param (callable(string, string): (\Pagou\Whmcs\Payment\Pix\Dto\PixCharge|\Pagou\Whmcs\Payment\Boleto\Domain\BoletoCharge))|null $paymentLookup
+     * @param (callable(\Pagou\Whmcs\Payment\Boleto\Api\BoletoListFilter): list<\Pagou\Whmcs\Payment\Boleto\Domain\BoletoCharge>)|null $boletoList
      */
     public function __construct(
         private readonly PDO $pdo,
@@ -85,11 +91,13 @@ final class WhmcsRuntime
         private readonly OperationOutbox $outbox,
         callable $localApi,
         ?callable $paymentLookup = null,
+        ?callable $boletoList = null,
     ) {
         $this->localApi = Closure::fromCallable($localApi);
         $this->attempts = new PaymentAttemptStore($pdo);
         $this->scheduler = new OperationScheduler($outbox, new SystemAsyncClock());
         $this->paymentLookup = $paymentLookup === null ? null : Closure::fromCallable($paymentLookup);
+        $this->boletoList = $boletoList === null ? null : Closure::fromCallable($boletoList);
     }
 
     public function scheduleInvoice(int $invoiceId): bool
@@ -105,6 +113,11 @@ final class WhmcsRuntime
         if (!in_array($invoiceStatus, ['draft', 'unpaid', 'overdue'], true)) {
             $this->scheduleCancellations($this->attempts->supersedeInvoice($invoiceId), null, $invoiceId);
 
+            return false;
+        }
+        // A draft still changes and the customer cannot see it: the charge is issued once it is
+        // published, instead of a Pix or a registered boleto replaced at each edit.
+        if ($invoiceStatus === 'draft') {
             return false;
         }
         if ($method === null) {
@@ -129,6 +142,13 @@ final class WhmcsRuntime
         }
         $clientId = (int) ($invoice['userid'] ?? 0);
         $dueDate = $this->civilDate((string) ($invoice['duedate'] ?? ''));
+        if ($this->refusalStands($invoiceId, $method, $clientId, $amount->centavos(), $dueDate)) {
+            // Each view of the invoice would be refused again with the same registration.
+            $this->retireOutdatedCharges($invoiceId, $method, $baseInvoice, $dueDate);
+            $this->keepRefusal($invoiceId, $method);
+
+            return false;
+        }
         $attempt = $this->attempts->ensureCurrent(
             $invoiceId,
             $clientId,
@@ -245,10 +265,21 @@ final class WhmcsRuntime
             . '<span class="pagou-status">' . $this->safe($label) . '</span></header>';
         if (in_array($state, PaymentAttemptStore::CLOSED_STATES, true)) {
             // A closed charge shows no amount, due date or payment data.
-            $message = (string) ($display['message'] ?? 'Não efetue um novo pagamento com os dados desta cobrança.');
+            $message = trim((string) ($display['message'] ?? 'Não efetue um novo pagamento com os dados desta cobrança.'));
+            // The first sentence says what happened, the rest what to do, as in the loading notice.
+            [$lead, $rest] = array_pad(preg_split('/(?<=\.)\s+/u', $message, 2) ?: [$message], 2, '');
+            $form = $state === 'failed' && $invoiceState === 'unpaid' ? $this->documentForm($invoiceId, $method) : '';
+            if ($form !== '') {
+                $rest = 'Informe o CPF ou CNPJ do titular para gerar o ' . ($method === 'pix' ? 'Pix' : 'boleto') . ' agora, ou escolha outra forma de pagamento.';
+            }
+            $icon = $state === 'failed'
+                ? '<path d="M12 8v5M12 16.5v.01"/><path d="M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0Z"/>'
+                : '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/>';
             $html .= '<p class="pagou-help" data-pagou-connection role="status" aria-live="polite" hidden></p>'
-                . '<p role="status">' . $this->safe($message) . '</p>';
-            if ($invoiceState === 'unpaid') {
+                . '<div class="pagou-notice" role="status"><svg class="pagou-notice__icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+                . ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' . $icon . '</svg>'
+                . '<div><strong>' . $this->safe($lead) . '</strong>' . ($rest !== '' ? '<small>' . $this->safe($rest) . '</small>' : '') . $form . '</div></div>';
+            if ($invoiceState === 'unpaid' && $form === '') {
                 $html .= '<p class="pagou-help">Se uma nova cobrança for emitida, ela aparecerá automaticamente nesta página.</p>';
             }
 
@@ -289,6 +320,125 @@ final class WhmcsRuntime
         return $html . '<p class="pagou-help">' . $help . '</p></section>';
     }
 
+    /**
+     * Saves the CPF or CNPJ the customer typed on an invoice whose charge was refused for
+     * it, in the document field the module reads, and issues the charge again.
+     * @return array{status: string, message?: string}
+     */
+    public function saveInvoiceDocument(int $invoiceId, string $method, int $clientId, string $value): array
+    {
+        $invoice = $this->invoiceRow($invoiceId);
+        $owned = $clientId > 0 && in_array($method, ['pix', 'boleto'], true) && (int) ($invoice['userid'] ?? 0) === $clientId;
+        $open = strtolower((string) ($invoice['status'] ?? '')) === 'unpaid' && (string) ($invoice['paymentmethod'] ?? '') === 'pagou_' . $method;
+        if (!$owned || !$open || !$this->documentCorrectable($invoiceId, $method)) {
+            return ['status' => 'forbidden', 'message' => 'Atualize a página e tente novamente.'];
+        }
+        $tries = is_array($_SESSION['pagou_document_tries'] ?? null) ? $_SESSION['pagou_document_tries'] : [];
+        $count = (int) ($tries[$invoiceId] ?? 0);
+        if ($count >= 5) {
+            return ['status' => 'limited', 'message' => 'Muitas tentativas. Atualize o CPF ou CNPJ no seu cadastro ou fale com o atendimento.'];
+        }
+        $tries[$invoiceId] = $count + 1;
+        $_SESSION['pagou_document_tries'] = array_slice($tries, -50, null, true);
+        try {
+            $document = \Pagou\Whmcs\Domain\Document::fromString($value);
+        } catch (\InvalidArgumentException) {
+            return ['status' => 'invalid', 'message' => 'Este CPF ou CNPJ não é válido. Confira os números e tente de novo.'];
+        }
+        $cpfField = $this->settings->integer('cpf_field_id', 0);
+        $cnpjField = $this->settings->integer('cnpj_field_id', 0);
+        // A single field configured for both documents receives either of them.
+        $field = $document->kind() === \Pagou\Whmcs\Domain\DocumentKind::Cpf ? ($cpfField ?: $cnpjField) : ($cnpjField ?: $cpfField);
+        $digits = $document->digits();
+        $formatted = strlen($digits) === 11
+            ? vsprintf('%s.%s.%s-%s', [substr($digits, 0, 3), substr($digits, 3, 3), substr($digits, 6, 3), substr($digits, 9)])
+            : vsprintf('%s.%s.%s/%s-%s', [substr($digits, 0, 2), substr($digits, 2, 3), substr($digits, 5, 3), substr($digits, 8, 4), substr($digits, 12)]);
+        // The native update keeps the change in the client log, as an edit of the profile.
+        $this->api('UpdateClient', ['clientid' => $clientId, 'customfields' => base64_encode(serialize([$field => $formatted]))]);
+        if (function_exists('logActivity')) {
+            logActivity('Pagou Payments: CPF ou CNPJ informado pelo cliente na fatura #' . $invoiceId . ' para gerar a cobrança.', $clientId);
+        }
+        $this->scheduleInvoice($invoiceId);
+
+        return ['status' => 'ok'];
+    }
+
+    /**
+     * Issues again the charges refused for the customer data once that data is corrected in
+     * the profile, by the customer or by an admin, without waiting for each invoice to be
+     * opened. A registration the module would still refuse by itself is left as it is, so the
+     * invoice keeps its message and no new notice is sent.
+     */
+    public function retryRefusedCharges(int $clientId): int
+    {
+        $invoices = $this->pdo->prepare(
+            "SELECT id, paymentmethod FROM tblinvoices WHERE userid = :client AND status = 'Unpaid' "
+            . "AND paymentmethod IN ('pagou_pix', 'pagou_boleto') ORDER BY id DESC LIMIT 10"
+        );
+        $invoices->execute(['client' => $clientId]);
+        $fingerprint = null;
+        $ready = [];
+        $issued = 0;
+        foreach ($invoices->fetchAll(PDO::FETCH_ASSOC) as $invoice) {
+            $invoiceId = (int) $invoice['id'];
+            $method = substr((string) $invoice['paymentmethod'], strlen('pagou_'));
+            $latest = $this->attempts->latestForInvoice($invoiceId, $method);
+            $refused = $latest === null ? null : ($this->decode((string) ($latest['response_json'] ?? ''))['payer'] ?? null);
+            if ($latest === null || (string) $latest['status'] !== 'failed' || !is_string($refused) || $refused === '') {
+                continue;
+            }
+            // Read only when a refused charge exists: most profile edits have none.
+            $fingerprint ??= $this->payerFingerprint($clientId);
+            if (!isset($ready[$method])) {
+                try {
+                    $this->payer($clientId, $method === 'boleto');
+                    $ready[$method] = true;
+                } catch (\Throwable) {
+                    // Still without a valid document or a Brazilian address.
+                    $ready[$method] = false;
+                }
+            }
+            if (hash_equals($refused, $fingerprint) || !$ready[$method] || !$this->scheduleInvoice($invoiceId)) {
+                continue;
+            }
+            $issued++;
+            if (function_exists('logActivity')) {
+                logActivity('Pagou Payments: cadastro do cliente atualizado, cobrança da fatura #' . $invoiceId . ' preparada de novo.', $clientId);
+            }
+        }
+
+        return $issued;
+    }
+
+    /** True when the invoice charge was refused for the CPF or CNPJ and the module knows where it is kept. */
+    private function documentCorrectable(int $invoiceId, string $method): bool
+    {
+        if ($this->settings->documentFieldIds() === []) {
+            return false;
+        }
+        $latest = $this->attempts->latestForInvoice($invoiceId, $method);
+        $failure = $latest === null ? '' : (string) ($this->decode((string) ($latest['response_json'] ?? ''))['failure'] ?? '');
+
+        return $latest !== null && (string) $latest['status'] === 'failed' && IssuanceFailure::documentRefused($failure);
+    }
+
+    private function documentForm(int $invoiceId, string $method): string
+    {
+        if (!$this->documentCorrectable($invoiceId, $method)) {
+            return '';
+        }
+        $id = 'pagou-document-' . $invoiceId;
+
+        return '<form class="pagou-document-form" method="post" action="modules/addons/pagou_payments/document.php" data-pagou-document-form novalidate>'
+            . '<input type="hidden" name="invoice" value="' . $invoiceId . '">'
+            . '<input type="hidden" name="method" value="' . $this->safe($method) . '">'
+            . '<input type="hidden" name="token" value="' . $this->safe(InvoiceProgressToken::issue($invoiceId)) . '">'
+            . '<label for="' . $id . '">CPF ou CNPJ do titular</label>'
+            . '<div class="pagou-document-row"><input id="' . $id . '" name="document" type="text" inputmode="numeric" autocomplete="off"'
+            . ' maxlength="18" required placeholder="000.000.000-00"><button type="submit">Salvar e gerar</button></div>'
+            . '<p class="pagou-document-feedback" data-pagou-document-feedback role="alert" hidden></p></form>';
+    }
+
     public function runWorker(?string $workerId = null): WorkerReport
     {
         try {
@@ -314,6 +464,18 @@ final class WhmcsRuntime
                 45,
             ),
         );
+        // Housekeeping never changes the result of payment processing; a later run retries it.
+        $housekeeping = new OperationHousekeeping($this->pdo, $this->scheduler);
+        $now = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        foreach (['settle', 'repair', 'recoverIssuance', 'refuse', 'resolve', 'closeRefusals'] as $step) {
+            try {
+                $housekeeping->{$step}($now);
+            } catch (\Throwable $exception) {
+                if (function_exists('logActivity')) {
+                    logActivity('Pagou Payments: manutenção da fila (' . $step . ') indisponível nesta execução. ' . $exception::class);
+                }
+            }
+        }
         $this->recordWorkerHeartbeat();
         try {
             $this->runRetentionIfDue();
@@ -554,7 +716,9 @@ final class WhmcsRuntime
         if ($invoiceId < 1) {
             return 0;
         }
-        $attempts = $this->attempts->supersedeInvoice($invoiceId);
+        // A charge that received a payment is never cancelled, even when WHMCS runs this
+        // hook before the module records the payment on that charge.
+        $attempts = $this->attempts->supersedeInvoice($invoiceId, $this->paidChargeIds($invoiceId));
         $this->scheduleCancellations($attempts, null, $invoiceId);
 
         return count($attempts);
@@ -823,7 +987,8 @@ final class WhmcsRuntime
                 && !$this->deliveryAllowsFallback($invoiceId)
                 ? $this->holdInitialEmail($invoiceId) : [];
         }
-        if (!$this->isCurrentBoletoDelivery($invoiceId, (string) $attempt['id'])) {
+        if ((string) $attempt['status'] === 'failed' || !$this->isCurrentBoletoDelivery($invoiceId, (string) $attempt['id'])) {
+            // A boleto that could not be issued never holds the invoice email.
             return [];
         }
         $boleto = (new PdoBoletoAttemptRepository($this->pdo, (int) $attempt['client_id']))->get((string) $attempt['id']);
@@ -878,6 +1043,8 @@ final class WhmcsRuntime
         $display = $this->attempts->displayForInvoice($invoiceId, $method);
         if ($attempt !== null && (string) ($attempt['status'] ?? '') !== '') {
             $display['state'] = (string) $attempt['status'];
+        } elseif (strtolower((string) ($invoice['status'] ?? '')) === 'draft') {
+            $display['state'] = 'draft';
         } elseif ($attempt === null) {
             $amountCents = max(
                 0,
@@ -895,14 +1062,58 @@ final class WhmcsRuntime
             'method' => $method,
             'attemptId' => (string) ($attempt['id'] ?? ''),
             'remoteId' => (string) ($attempt['remote_id'] ?? ''),
+            'failure' => $attempt !== null && (string) ($attempt['status'] ?? '') === 'failed' ? $this->failureExplanation($invoiceId, $method, $attempt) : '',
+            'review' => $attempt === null ? '' : $this->issuanceReview((string) $attempt['id']),
         ];
+    }
+
+    /** The guidance of an open issuance review: the card then waits for the administrator. */
+    private function issuanceReview(string $attemptId): string
+    {
+        $statement = $this->pdo->prepare(
+            "SELECT details_json FROM pagou_reconciliation_findings WHERE attempt_id = :attempt "
+            . "AND finding_type = 'boleto_issuance_requires_review' AND status = 'open' LIMIT 1"
+        );
+        $statement->execute(['attempt' => $attemptId]);
+        $details = $statement->fetchColumn();
+        if ($details === false) {
+            return '';
+        }
+        $message = $this->decode((string) $details)['message'] ?? null;
+
+        return is_string($message) && $message !== '' ? $message : 'A emissão deste boleto precisa de conferência. Gere um novo boleto pelo card da fatura ou confira com a Pagou.';
+    }
+
+    /**
+     * Why the charge on the invoice card failed, in plain Portuguese, and what can be done.
+     * @param array<string, mixed> $attempt
+     */
+    private function failureExplanation(int $invoiceId, string $method, array $attempt): string
+    {
+        $code = (string) ($this->decode((string) ($attempt['response_json'] ?? ''))['failure'] ?? '');
+        $reason = $code === '' ? null : \Pagou\Whmcs\Presentation\OperationDetails::reason($code);
+        if ($reason === null) {
+            return '';
+        }
+
+        $next = match (true) {
+            $this->documentCorrectable($invoiceId, $method) => 'O cliente pode informar o documento na própria fatura ou no cadastro, e a cobrança é gerada de novo.',
+            IssuanceFailure::customerData($code) => 'Assim que o cadastro for corrigido, pelo cliente ou pelo admin, a cobrança é gerada de novo'
+                . ($method === 'boleto' ? ', ou use "Gerar novo boleto".' : '.'),
+            default => '',
+        };
+
+        return trim(rtrim($reason, '.') . '. ' . $next);
     }
 
     private function issuePix(OperationJob $job): HandlerOutcome
     {
         $attempt = $this->requiredAttemptFromJob($job);
+        $outcome = $this->issuePixAttempt($attempt, $job);
 
-        return $this->issuePixAttempt($attempt, $job);
+        return $outcome->result === OperationResult::PermanentFailure
+            ? $this->refuseCharge($attempt, (string) $outcome->reason, IssuanceFailure::customerData((string) $outcome->reason))
+            : $outcome;
     }
 
     private function issuePixSynchronously(string $attemptId): bool
@@ -917,10 +1128,12 @@ final class WhmcsRuntime
         }
         if ($outcome->result === OperationResult::Uncertain) {
             $this->attempts->markStatus($attemptId, 'uncertain');
+            $this->attempts->recordFailure($attemptId, (string) $outcome->reason);
 
             return true;
         }
-        $this->attempts->markStatus($attemptId, 'failed');
+        // Synchronous Pix has no queue operation, so the reason stays with the charge.
+        $this->refuseCharge($attempt, (string) $outcome->reason, IssuanceFailure::customerData((string) $outcome->reason));
 
         return false;
     }
@@ -993,9 +1206,9 @@ final class WhmcsRuntime
         } catch (PixApiException $exception) {
             return $exception->status >= 500 || $exception->status === 429
                 ? HandlerOutcome::uncertain('pix_remote_failure')
-                : HandlerOutcome::permanentFailure('pix_request_rejected');
+                : HandlerOutcome::permanentFailure('pix_request_rejected:' . IssuanceFailure::provider($exception->getMessage()));
         } catch (\Throwable $exception) {
-            return HandlerOutcome::permanentFailure('pix_local_validation:' . $exception::class);
+            return HandlerOutcome::permanentFailure('pix_local_validation:' . IssuanceFailure::local($exception));
         }
     }
 
@@ -1005,6 +1218,7 @@ final class WhmcsRuntime
         if ((string) $attempt['status'] === 'superseded') {
             return HandlerOutcome::succeeded();
         }
+        $sent = false;
         try {
             $clientId = (int) $attempt['client_id'];
             if (!$this->validateLateCharges($attempt, 'boleto')) {
@@ -1021,7 +1235,7 @@ final class WhmcsRuntime
                 return HandlerOutcome::permanentFailure('due_date_requires_review');
             }
             $applyLateCharges = $this->lateChargeAllowed('boleto', $clientId);
-            $result = $handler->handle((string) $attempt['id'], new CreateBoletoRequest(
+            $request = new CreateBoletoRequest(
                 (string) $attempt['invoice_id'],
                 (string) $attempt['idempotency_key'],
                 (int) $attempt['amount_cents'],
@@ -1034,7 +1248,9 @@ final class WhmcsRuntime
                 $this->callbackUrl(),
                 $applyLateCharges ? $this->settings->decimal('boleto_fine') : 0.0,
                 $applyLateCharges ? $this->settings->decimal('boleto_interest') : 0.0,
-            ));
+            );
+            $sent = true;
+            $result = $handler->handle((string) $attempt['id'], $request);
             $result = $this->withPdfUrl($result);
             $repository->save($result);
             $this->projectBoleto($result);
@@ -1042,11 +1258,176 @@ final class WhmcsRuntime
 
             return HandlerOutcome::succeeded();
         } catch (\Pagou\Whmcs\Payment\Boleto\Api\BoletoApiException $exception) {
-            return $exception->outcomeUnknown()
-                ? HandlerOutcome::uncertain('boleto_remote_outcome_unknown')
-                : HandlerOutcome::permanentFailure('boleto_request_rejected');
+            $code = IssuanceFailure::provider($exception->kind);
+            // Pagou answers a bank refusal with 502 too; a refusal created nothing.
+            if ($exception->outcomeUnknown() && $code !== 'provider_rejected') {
+                return HandlerOutcome::uncertain('boleto_remote_outcome_unknown:' . ($code !== 'unknown' ? $code : ($exception->kind !== '' && preg_match('/^[a-z_]{1,40}$/', $exception->kind) === 1 ? $exception->kind : 'http_' . $exception->status)));
+            }
+
+            $reason = 'boleto_request_rejected:' . $code;
+
+            return $this->refuseCharge($attempt, $reason, in_array($exception->status, [400, 422], true) || IssuanceFailure::customerData($reason));
         } catch (\Throwable $exception) {
-            return HandlerOutcome::permanentFailure('boleto_local_validation:' . $exception::class);
+            $detail = IssuanceFailure::local($exception);
+            $reason = 'boleto_local_validation:' . $detail;
+
+            // Once sent, a local error says nothing about the charge at Pagou: it stays as it is.
+            return $sent ? HandlerOutcome::permanentFailure($reason) : $this->refuseCharge($attempt, $reason, $detail !== 'unknown');
+        }
+    }
+
+    /**
+     * Shows a charge Pagou refused, or one the customer data cannot make, as failed
+     * instead of being prepared forever. A refusal of the data itself is not issued
+     * again until that data, the amount or the due date changes.
+     * @param array<string, mixed> $attempt
+     */
+    private function refuseCharge(array $attempt, string $reason, bool $dataRefused): HandlerOutcome
+    {
+        $attemptId = (string) $attempt['id'];
+        $status = (string) ($this->attempts->find($attemptId)['status'] ?? '');
+        $refused = $status === 'queued';
+        if ($refused) {
+            $this->attempts->complete($attemptId, '', 'failed', ['state' => 'failed', 'message' => IssuanceFailure::customerMessage($reason)]);
+            $status = 'failed';
+        }
+        $payer = null;
+        // A charge already failed by its own check, such as the due date, keeps its message.
+        if ($status === 'failed') {
+            if ($dataRefused) {
+                try {
+                    $payer = $this->payerFingerprint((int) $attempt['client_id']);
+                } catch (\Throwable) {
+                    // Without a fingerprint the next view of the invoice simply tries again.
+                }
+            }
+            $this->attempts->recordFailure($attemptId, $reason, $payer);
+        }
+        if ($refused) {
+            try {
+                // Listed in Pendências until the charge is issued again or the invoice moves on.
+                $explanation = $this->failureExplanation((int) $attempt['invoice_id'], (string) $attempt['method'], $this->attempts->find($attemptId) ?? $attempt);
+                $this->recordFinding($attemptId, 'charge_issuance_refused', 'medium', $explanation !== '' ? $explanation : 'Confira o motivo no histórico da fatura.', ['reason' => $reason]);
+                if ($payer !== null) {
+                    $this->notifyRefusal($attempt, $reason, $payer);
+                }
+            } catch (\Throwable) {
+                // The listing and the notice never change the outcome of the issuance.
+            }
+        }
+
+        return HandlerOutcome::permanentFailure($reason);
+    }
+
+    /**
+     * A refusal that still stands stays listed in Pendências and is announced to the
+     * customer, such as one recorded while the invoice was a draft and now published.
+     * The notice itself keeps it to once per registration.
+     */
+    private function keepRefusal(int $invoiceId, string $method): void
+    {
+        $latest = $this->attempts->latestForInvoice($invoiceId, $method);
+        $response = $latest === null ? [] : $this->decode((string) ($latest['response_json'] ?? ''));
+        if ($latest === null || !is_string($response['failure'] ?? null) || !is_string($response['payer'] ?? null)) {
+            return;
+        }
+        try {
+            $this->pdo->prepare(
+                "UPDATE pagou_reconciliation_findings SET status = 'open', resolved_at_utc = NULL, resolution_json = NULL, "
+                . "updated_at = :updated_at, version = version + 1 WHERE attempt_id = :attempt AND finding_type = 'charge_issuance_refused' AND status = 'resolved'"
+            )->execute(['updated_at' => $this->now(), 'attempt' => (string) $latest['id']]);
+            $this->notifyRefusal($latest, $response['failure'], $response['payer']);
+        } catch (\Throwable) {
+            // The listing and the notice never change how the invoice is prepared.
+        }
+    }
+
+    /**
+     * Tells the customer by email why the charge could not be issued and links the invoice,
+     * when the merchant enables it. Once per invoice, method and registration: the intent is
+     * recorded first, and a notice whose outcome is unknown is never sent again.
+     * @param array<string, mixed> $attempt
+     */
+    private function notifyRefusal(array $attempt, string $reason, string $payer): void
+    {
+        $invoiceId = (int) $attempt['invoice_id'];
+        $method = (string) $attempt['method'];
+        if (!$this->settings->boolean('notify_refused_charge') || ($this->invoiceRow($invoiceId)['status'] ?? '') !== 'Unpaid') {
+            return;
+        }
+        $key = hash('sha256', 'refusal:' . $invoiceId . ':' . $method . ':' . $payer);
+        $now = $this->now();
+        try {
+            $this->pdo->prepare(
+                'INSERT INTO pagou_customer_notices (notice_key, invoice_id, attempt_id, status, created_at, updated_at) '
+                . 'VALUES (:key, :invoice_id, :attempt_id, :status, :created_at, :updated_at)'
+            )->execute(['key' => $key, 'invoice_id' => $invoiceId, 'attempt_id' => (string) $attempt['id'], 'status' => 'sending', 'created_at' => $now, 'updated_at' => $now]);
+        } catch (\PDOException) {
+            // Already announced for this registration.
+            return;
+        }
+        $charge = $method === 'pix' ? 'Pix' : 'boleto';
+        $message = $this->documentCorrectable($invoiceId, $method)
+            ? 'O ' . $charge . ' precisa de um CPF ou CNPJ válido. Abra a fatura e informe o documento do titular para gerar o ' . $charge . ' na hora, ou escolha outra forma de pagamento.'
+            : IssuanceFailure::customerMessage($reason);
+        try {
+            // {$invoice_link} is already an anchor: the button carries the plain invoice address.
+            $url = $this->absoluteModuleUrl('viewinvoice.php?id=' . $invoiceId);
+            $url = str_starts_with($url, 'http') ? $this->safe($url) : '{$whmcs_url}viewinvoice.php?id=' . $invoiceId;
+            $this->api('SendEmail', [
+                'customtype' => 'invoice',
+                'id' => $invoiceId,
+                'customsubject' => 'Fatura #{$invoice_num}: não foi possível gerar o ' . $charge,
+                'custommessage' => '<p>Olá, {$client_first_name},</p><p>' . $this->safe($message) . '</p>'
+                    . '<p>Fatura #{$invoice_num}, no valor de {$invoice_total}.</p>'
+                    . '<p style="margin:24px 0"><a href="' . $url . '" style="display:inline-block;background:#2856d9;color:#ffffff;'
+                    . 'font-weight:600;text-decoration:none;padding:12px 22px;border-radius:6px">Abrir a fatura</a></p><p>{$signature}</p>',
+            ]);
+            $status = 'sent';
+        } catch (\Throwable) {
+            $status = 'failed';
+        }
+        $this->pdo->prepare('UPDATE pagou_customer_notices SET status = :status, updated_at = :updated_at WHERE notice_key = :key')
+            ->execute(['status' => $status, 'updated_at' => $this->now(), 'key' => $key]);
+    }
+
+    /** What the boleto payer is made of, to tell whether a refused registration has changed. */
+    private function payerFingerprint(int $clientId): string
+    {
+        $client = $this->api('GetClientsDetails', ['clientid' => $clientId, 'stats' => false]);
+        try {
+            $document = (string) (new ClientDocumentResolver($this->pdo, $this->settings))->resolve($client, $clientId);
+        } catch (\Throwable) {
+            $document = '';
+        }
+        $fields = [
+            'document' => $document,
+            'number' => $this->settings->string('address_number_fallback', 'S/N'),
+            'neighborhood' => $this->settings->string('neighborhood_fallback', 'Centro'),
+        ];
+        foreach (['firstname', 'lastname', 'companyname', 'email', 'phonenumber', 'address1', 'address2', 'city', 'state', 'postcode', 'country'] as $field) {
+            $fields[$field] = is_scalar($client[$field] ?? null) ? (string) $client[$field] : '';
+        }
+
+        return hash('sha256', json_encode($fields, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
+    }
+
+    /** True while a charge refused for the customer data would be refused again. */
+    private function refusalStands(int $invoiceId, string $method, int $clientId, int $amountCents, string $dueDate): bool
+    {
+        $latest = $this->attempts->latestForInvoice($invoiceId, $method);
+        $request = $latest === null ? [] : $this->decode((string) ($latest['request_json'] ?? ''));
+        if ($latest === null || (string) $latest['status'] !== 'failed' || (int) $latest['amount_cents'] !== $amountCents || ($request['due_date'] ?? null) !== $dueDate) {
+            return false;
+        }
+        $refused = $this->decode((string) ($latest['response_json'] ?? ''))['payer'] ?? null;
+        if (!is_string($refused) || $refused === '') {
+            return false;
+        }
+        try {
+            return hash_equals($refused, $this->payerFingerprint($clientId));
+        } catch (\Throwable) {
+            return false;
         }
     }
 
@@ -1078,6 +1459,9 @@ final class WhmcsRuntime
 
     private function reconcileOperation(OperationJob $job): HandlerOutcome
     {
+        if (($job->payload['operation'] ?? '') === 'boleto.issue') {
+            return $this->recoverBoletoIssuance($job);
+        }
         if (($job->payload['operation'] ?? '') === 'card.card.delete' && is_string($job->payload['card_id'] ?? null)) {
             try {
                 RuntimeFactory::card()->getCard($job->payload['card_id']);
@@ -1414,16 +1798,19 @@ final class WhmcsRuntime
         if ($remoteId === '') {
             return HandlerOutcome::permanentFailure('boleto_cancel_without_remote_id');
         }
+        $attemptId = (string) ($job->payload['attempt_id'] ?? '');
+        $invoiceId = $this->jobInvoiceId($job);
         try {
             $this->boletoClient($job)->cancel($remoteId);
             $this->scheduler->schedule(
                 Uuid::v4(),
                 OperationType::ReplaceBoleto,
-                'boleto:cancel-confirm:' . (string) ($job->payload['attempt_id'] ?? hash('sha256', $remoteId)),
+                // One confirmation per cancellation request, so a repeated request is confirmed too.
+                'boleto:cancel-confirm:' . ($attemptId !== '' ? $attemptId : hash('sha256', $remoteId)) . ':' . substr(hash('sha256', $job->deduplicationKey), 0, 16),
                 JobPriority::FinancialRecovery,
                 [
-                    'attempt_id' => (string) ($job->payload['attempt_id'] ?? ''),
-                    'invoice_id' => (int) ($job->payload['invoice_id'] ?? 0),
+                    'attempt_id' => $attemptId,
+                    'invoice_id' => $invoiceId,
                     'remote_id' => $remoteId,
                     'replace' => (bool) ($job->payload['replace'] ?? false),
                     'release_attempt_id' => (string) ($job->payload['release_attempt_id'] ?? ''),
@@ -1432,17 +1819,16 @@ final class WhmcsRuntime
 
             return HandlerOutcome::succeeded();
         } catch (\Throwable) {
-            // A boleto already cancelled at Pagou refuses another cancellation.
+            // Pagou refuses to cancel a boleto already cancelled or already paid; that
+            // final state is applied here instead of leaving the operation uncertain.
             try {
-                $charge = $this->paymentLookup === null ? $this->boletoClient($job)->get($remoteId) : ($this->paymentLookup)('boleto', $remoteId);
-                $status = strtolower($charge->status);
+                $status = strtolower($this->boletoLookup($job, $remoteId)->status);
             } catch (\Throwable) {
                 $status = '';
             }
 
-            return in_array($status, ['cancelled', 'canceled', 'voided'], true)
-                ? HandlerOutcome::succeeded()
-                : HandlerOutcome::uncertain('boleto_cancel_unknown');
+            return $this->settleBoletoCancellation($job, $attemptId, $invoiceId, $status)
+                ?? HandlerOutcome::uncertain('boleto_cancel_unknown');
         }
     }
 
@@ -1450,40 +1836,191 @@ final class WhmcsRuntime
     {
         $attemptId = (string) ($job->payload['attempt_id'] ?? '');
         $remoteId = (string) ($job->payload['remote_id'] ?? '');
-        $invoiceId = (int) ($job->payload['invoice_id'] ?? 0);
+        $invoiceId = $this->jobInvoiceId($job);
         if ($attemptId === '' || $remoteId === '' || $invoiceId < 1) {
             return HandlerOutcome::permanentFailure('boleto_cancel_confirmation_invalid');
         }
         try {
-            $charge = $this->boletoClient($job)->get($remoteId);
-            $status = strtolower($charge->status);
-            if (in_array($status, ['paid', 'completed'], true)) {
-                $this->attempts->markStatus($attemptId, 'paid');
-                $this->recordFinding(
-                    $attemptId,
-                    'payment_during_cancellation',
-                    'critical',
-                    'O boleto foi pago durante a tentativa de cancelamento. A substituição foi interrompida.',
-                );
+            $status = strtolower($this->boletoLookup($job, $remoteId)->status);
 
-                return HandlerOutcome::permanentFailure('boleto_paid_during_cancellation');
-            }
-            if (!in_array($status, ['cancelled', 'canceled', 'voided'], true)) {
-                return HandlerOutcome::pending('boleto_cancellation_pending');
-            }
-
-            $this->attempts->markStatus($attemptId, 'cancelled');
-            $this->releaseReplacementAttempt($job);
-            if ((bool) ($job->payload['replace'] ?? false)) {
-                $this->scheduleInvoice($invoiceId);
-            }
-
-            return HandlerOutcome::succeeded();
+            return $this->settleBoletoCancellation($job, $attemptId, $invoiceId, $status)
+                ?? HandlerOutcome::pending('boleto_cancellation_pending');
         } catch (\Pagou\Whmcs\Payment\Boleto\Api\BoletoApiException $exception) {
             return HandlerOutcome::retryable('boleto_cancel_lookup_failed', $exception->retryAt);
         } catch (\Throwable $exception) {
             return HandlerOutcome::retryable('boleto_cancel_confirmation_failed:' . $exception::class);
         }
+    }
+
+    /**
+     * Resolves a boleto issuance that got no answer: the boleto Pagou created is
+     * adopted, or, when Pagou lists none, the issuance runs again without risk of a
+     * second boleto.
+     */
+    private function recoverBoletoIssuance(OperationJob $job): HandlerOutcome
+    {
+        $attempt = $this->attemptFromJob($job);
+        $operationId = (string) ($job->payload['issue_operation_id'] ?? '');
+        if ($attempt === null || $operationId === '') {
+            return HandlerOutcome::permanentFailure('boleto_issue_recovery_invalid');
+        }
+        if ((string) $attempt['status'] !== 'queued' || trim((string) ($attempt['remote_id'] ?? '')) !== '') {
+            // Resolved meanwhile, by a payment, a replacement or another lookup.
+            $this->settleIssueOperation($operationId);
+
+            return HandlerOutcome::succeeded();
+        }
+        try {
+            $requestedAt = new \DateTimeImmutable((string) ($job->payload['requested_at'] ?? $attempt['created_at']), new \DateTimeZone('UTC'));
+        } catch (\Exception) {
+            $requestedAt = new \DateTimeImmutable((string) $attempt['created_at'], new \DateTimeZone('UTC'));
+        }
+        $list = $this->boletoList ?? fn (\Pagou\Whmcs\Payment\Boleto\Api\BoletoListFilter $filter): array => $this->boletoClient($job)->list($filter);
+        try {
+            $result = (new BoletoIssuanceRecovery($this->pdo, Closure::fromCallable($list)))
+                ->decide($attempt, $requestedAt, new \DateTimeImmutable('now', new \DateTimeZone('UTC')));
+        } catch (\Pagou\Whmcs\Payment\Boleto\Api\BoletoApiException $exception) {
+            return HandlerOutcome::retryable('boleto_issue_recovery_lookup_failed', $exception->retryAt);
+        }
+        if ($result['decision'] === 'wait') {
+            return HandlerOutcome::pending('boleto_issue_recovery_window_open');
+        }
+        if ($result['decision'] === 'ambiguous') {
+            $this->recordFinding(
+                (string) $attempt['id'],
+                'boleto_issuance_requires_review',
+                'high',
+                'A Pagou lista mais de um boleto para esta emissão. Confira na Pagou antes de gerar outro.',
+                ['reason' => 'ambiguous'],
+            );
+
+            return HandlerOutcome::uncertain('boleto_issue_recovery_ambiguous');
+        }
+        if ($result['decision'] === 'retry') {
+            // A boleto Pagou never manages to issue is not retried forever.
+            $previous = $this->pdo->prepare("SELECT COUNT(*) FROM pagou_payment_operations WHERE operation_type = 'reconcile_uncertain_operation' AND attempt_id = :attempt AND status = 'succeeded'");
+            $previous->execute(['attempt' => (string) $attempt['id']]);
+            if ((int) $previous->fetchColumn() >= self::BOLETO_ISSUE_RETRIES) {
+                $this->recordFinding(
+                    (string) $attempt['id'],
+                    'boleto_issuance_requires_review',
+                    'high',
+                    'A Pagou não confirmou a emissão deste boleto após três tentativas. Gere um novo boleto pelo card da fatura ou confira com a Pagou. A pendência se encerra quando a cobrança for substituída, paga ou cancelada.',
+                    ['reason' => 'exhausted'],
+                );
+
+                return HandlerOutcome::uncertain('boleto_issue_recovery_exhausted');
+            }
+            $now = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d H:i:s.u');
+            $resume = $this->pdo->prepare(
+                "UPDATE pagou_payment_operations SET status = 'retrying', attempts = 0, available_at = :available_at, "
+                . 'lease_token = NULL, lease_expires_at = NULL, error_code = NULL, error_message = NULL, retry_after_utc = NULL, '
+                . "finished_at = NULL, updated_at = :updated_at, version = version + 1 WHERE id = :id AND status = 'uncertain'"
+            );
+            $resume->execute(['available_at' => $now, 'updated_at' => $now, 'id' => $operationId]);
+
+            return HandlerOutcome::succeeded();
+        }
+        $repository = new PdoBoletoAttemptRepository($this->pdo, (int) $attempt['client_id']);
+        $current = $repository->get((string) $attempt['id']);
+        if ($current === null) {
+            return HandlerOutcome::permanentFailure('boleto_attempt_missing');
+        }
+        // The listed boleto is the one this issuance created: continue as the emission would.
+        $current = $this->withPdfUrl($current->issued($this->boletoLookup($job, $result['charge']->remoteId)));
+        $repository->save($current);
+        $this->projectBoleto($current);
+        $this->scheduleBoletoArtifacts($current);
+        $this->settleIssueOperation($operationId);
+
+        return HandlerOutcome::succeeded();
+    }
+
+    private function settleIssueOperation(string $operationId): void
+    {
+        $now = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->format('Y-m-d H:i:s.u');
+        $statement = $this->pdo->prepare(
+            "UPDATE pagou_payment_operations SET status = 'succeeded', error_message = 'settled_by_charge_state', "
+            . "lease_token = NULL, lease_expires_at = NULL, finished_at = :finished_at, updated_at = :updated_at, version = version + 1 WHERE id = :id AND status = 'uncertain'"
+        );
+        $statement->execute(['finished_at' => $now, 'updated_at' => $now, 'id' => $operationId]);
+    }
+
+    /**
+     * Applies the remote state a boleto reached while it was being cancelled, or
+     * returns null while it is still open.
+     */
+    private function settleBoletoCancellation(OperationJob $job, string $attemptId, int $invoiceId, string $status): ?HandlerOutcome
+    {
+        $replace = (bool) ($job->payload['replace'] ?? false);
+        if (in_array($status, ['paid', 'completed', 'paid_with_discount', 'paid_with_fine_or_interest'], true)) {
+            if ($attemptId !== '') {
+                $this->closeAttempt($attemptId, 'paid');
+                // The payment itself is booked by the reconciliation, from its signed evidence.
+                $this->scheduler->schedule(
+                    Uuid::v4(),
+                    OperationType::ReconcilePayment,
+                    'boleto:paid-during-cancellation:' . $attemptId,
+                    JobPriority::PaymentConfirmation,
+                    ['attempt_id' => $attemptId, 'method' => 'boleto'],
+                );
+                if ($replace) {
+                    $this->recordFinding(
+                        $attemptId,
+                        'payment_during_cancellation',
+                        'critical',
+                        'O boleto foi pago durante a tentativa de substituição. A substituição foi interrompida.',
+                    );
+                }
+            }
+
+            return HandlerOutcome::succeeded();
+        }
+        if (in_array($status, ['cancelled', 'canceled', 'voided'], true)) {
+            if ($attemptId !== '') {
+                $this->closeAttempt($attemptId, 'cancelled');
+            }
+            $this->releaseReplacementAttempt($job);
+            if ($replace && $invoiceId > 0) {
+                $this->scheduleInvoice($invoiceId);
+            }
+
+            return HandlerOutcome::succeeded();
+        }
+
+        return null;
+    }
+
+    /** Moves an open or cancelling charge to its final state; a final state is kept. */
+    private function closeAttempt(string $attemptId, string $status): void
+    {
+        $current = $this->attempts->find($attemptId);
+        $open = ['cancel_requested', 'queued', 'pending', 'ready', 'active', 'awaiting_registration', 'uncertain'];
+        if ($current !== null && in_array((string) $current['status'], $open, true)) {
+            $this->attempts->markStatus($attemptId, $status);
+        }
+    }
+
+    /** The invoice of a job, recovered from its charge when an older job lacks it. */
+    private function jobInvoiceId(OperationJob $job): int
+    {
+        $invoiceId = (int) ($job->payload['invoice_id'] ?? 0);
+        $attemptId = $job->payload['attempt_id'] ?? null;
+        if ($invoiceId < 1 && is_string($attemptId) && $attemptId !== '') {
+            $invoiceId = (int) ($this->attempts->find($attemptId)['invoice_id'] ?? 0);
+        }
+
+        return $invoiceId;
+    }
+
+    private function boletoLookup(OperationJob $job, string $remoteId): \Pagou\Whmcs\Payment\Boleto\Domain\BoletoCharge
+    {
+        $charge = $this->paymentLookup === null ? $this->boletoClient($job)->get($remoteId) : ($this->paymentLookup)('boleto', $remoteId);
+        if (!$charge instanceof \Pagou\Whmcs\Payment\Boleto\Domain\BoletoCharge) {
+            throw new \UnexpectedValueException('Expected a boleto charge.');
+        }
+
+        return $charge;
     }
 
     private function paymentApplier(): ReceivedPaymentApplier
@@ -1548,8 +2085,28 @@ final class WhmcsRuntime
             if ($current !== null && in_array((string) $current['status'], ['queued', 'pending', 'ready', 'active', 'awaiting_registration', 'uncertain'], true)) {
                 $this->attempts->markStatus((string) $attempt['id'], 'paid');
             }
-            $this->scheduleCancellations($this->attempts->supersedeInvoice($invoiceId), null, $invoiceId);
+            $this->scheduleCancellations($this->attempts->supersedeInvoice($invoiceId, $this->paidChargeIds($invoiceId)), null, $invoiceId);
         }
+    }
+
+    /**
+     * Charges with a recorded payment, including one still being booked.
+     * @return list<string>
+     */
+    private function paidChargeIds(int $invoiceId): array
+    {
+        $statement = $this->pdo->prepare("SELECT metadata_json FROM pagou_ledger_entries WHERE invoice_id = :invoice AND entry_type = 'received_payment'");
+        $statement->execute(['invoice' => $invoiceId]);
+        $ids = [];
+        foreach ($statement->fetchAll(PDO::FETCH_COLUMN) as $json) {
+            $data = json_decode((string) $json, true);
+            $id = is_array($data) ? ($data['remote_charge_id'] ?? null) : null;
+            if (is_string($id) && $id !== '') {
+                $ids[$id] = true;
+            }
+        }
+
+        return array_keys($ids);
     }
 
     /**
@@ -1614,8 +2171,10 @@ final class WhmcsRuntime
     {
         $client = $this->api('GetClientsDetails', ['clientid' => $clientId, 'stats' => false]);
         $document = (new ClientDocumentResolver($this->pdo, $this->settings))->resolve($client, $clientId);
-        $person = trim((string) ($client['firstname'] ?? '') . ' ' . (string) ($client['lastname'] ?? ''));
-        $company = trim((string) ($client['companyname'] ?? ''));
+        // WHMCS keeps names with HTML entities, such as "&amp;"; the charge carries the name itself.
+        $decode = static fn (mixed $value): string => html_entity_decode((string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $person = trim($decode($client['firstname'] ?? '') . ' ' . $decode($client['lastname'] ?? ''));
+        $company = trim($decode($client['companyname'] ?? ''));
         $payer = [
             // A CNPJ belongs to the company: the charge carries its name, not the contact person's.
             'name' => strlen((string) preg_replace('/\D/', '', (string) $document)) === 14 && $company !== '' ? $company : $person,
@@ -1624,16 +2183,25 @@ final class WhmcsRuntime
         if (!$fullAddress) {
             return $payer;
         }
+        $zip = preg_replace('/\D+/', '', (string) ($client['postcode'] ?? '')) ?? '';
+        $country = strtoupper(trim((string) ($client['country'] ?? '')));
+        // A Brazilian CEP is kept even when the country was left wrong in the registration.
+        if ($country !== '' && $country !== 'BR' && strlen($zip) !== 8) {
+            throw new \InvalidArgumentException('Boleto payer address must be in Brazil.');
+        }
 
-        return $payer + [
+        $text = static fn (string $value): string => \Pagou\Whmcs\Support\BankText::clean($value);
+
+        // The bank registers the boleto with plain Latin-1 text only.
+        return ['name' => $text((string) $payer['name'])] + $payer + [
             'email' => (string) ($client['email'] ?? ''),
             'phone' => preg_replace('/\D+/', '', (string) ($client['phonenumber'] ?? '')) ?? '',
-            'zip' => preg_replace('/\D+/', '', (string) ($client['postcode'] ?? '')) ?? '',
-            'street' => (string) ($client['address1'] ?? ''),
-            'number' => $this->settings->string('address_number_fallback', 'S/N'),
-            'complement' => (string) ($client['address2'] ?? ''),
-            'neighborhood' => $this->settings->string('neighborhood_fallback', 'Centro'),
-            'city' => (string) ($client['city'] ?? ''),
+            'zip' => $zip,
+            'street' => $text((string) ($client['address1'] ?? '')),
+            'number' => $text($this->settings->string('address_number_fallback', 'S/N')),
+            'complement' => $text((string) ($client['address2'] ?? '')),
+            'neighborhood' => $text($this->settings->string('neighborhood_fallback', 'Centro')),
+            'city' => $text((string) ($client['city'] ?? '')),
             'state' => strtoupper((string) ($client['state'] ?? '')),
         ];
     }
@@ -2002,7 +2570,8 @@ final class WhmcsRuntime
         ]);
     }
 
-    private function recordFinding(string $attemptId, string $type, string $severity, string $message): void
+    /** @param array<string, string> $details */
+    private function recordFinding(string $attemptId, string $type, string $severity, string $message, array $details = []): void
     {
         $now = $this->now();
         $findingKey = hash('sha256', implode('|', [$attemptId, $type]));
@@ -2021,7 +2590,7 @@ final class WhmcsRuntime
                 'severity' => $severity,
                 'finding_type' => $type,
                 'status' => 'open',
-                'details_json' => json_encode(['message' => $message], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
+                'details_json' => json_encode(['message' => $message] + $details, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
                 'detected_at' => $now,
                 'created_at' => $now,
                 'updated_at' => $now,
@@ -2451,7 +3020,9 @@ final class WhmcsRuntime
         if (preg_match('/^\d{4}-\d{2}-\d{2}/', $value) !== 1) {
             throw new \UnexpectedValueException('Payment date is missing or invalid.');
         }
-        $date = new \DateTimeImmutable($value, new \DateTimeZone('UTC'));
+        // Pix dates carry their offset. The boleto payment date comes from the bank in
+        // Brasília time without one, so a value without an offset is read in that zone.
+        $date = new \DateTimeImmutable($value, new \DateTimeZone('America/Sao_Paulo'));
         $errors = \DateTimeImmutable::getLastErrors();
         // PHP 8.1 returns an empty error report on success; PHP 8.2+ returns false.
         if ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0)) {

@@ -8,21 +8,21 @@
 </p>
 
 <p align="center">
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/vers%C3%A3o-0.3.0--rc.1-0071df?style=flat-square" alt="Versão 0.3.0-rc.1"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/vers%C3%A3o-0.3.0--rc.2-0071df?style=flat-square" alt="Versão 0.3.0-rc.2"></a>
   <a href="#requisitos"><img src="https://img.shields.io/badge/PHP-8.1%2B-697ab1?style=flat-square&amp;logo=php&amp;logoColor=white" alt="PHP 8.1 ou superior"></a>
   <a href="#requisitos"><img src="https://img.shields.io/badge/WHMCS-8.6%20a%208.x-0071df?style=flat-square" alt="WHMCS 8.6 a 8.x"></a>
   <img src="https://img.shields.io/badge/idioma-Portugu%C3%AAs%20BR-15836b?style=flat-square" alt="Interface em português do Brasil">
-  <a href="#qualidade"><img src="https://img.shields.io/badge/testes-581-16866a?style=flat-square" alt="581 testes PHP e JavaScript na candidata 0.3.0-rc.1"></a>
+  <a href="#qualidade"><img src="https://img.shields.io/badge/testes-637-16866a?style=flat-square" alt="637 testes PHP e JavaScript na candidata 0.3.0-rc.2"></a>
   <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/status-Pr%C3%A9--release-b77919?style=flat-square" alt="Pré-release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licen%C3%A7a-MIT-526475?style=flat-square" alt="Licença MIT"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/pagou-com-br/pagou-whmcs/releases/download/v0.3.0-rc.1/pagou-whmcs-0.3.0-rc.1.zip"><strong>Baixar Pagou para WHMCS (.zip)</strong></a>
+  <a href="https://github.com/pagou-com-br/pagou-whmcs/releases/download/v0.3.0-rc.2/pagou-whmcs-0.3.0-rc.2.zip"><strong>Baixar Pagou para WHMCS (.zip)</strong></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/pagou-com-br/pagou-whmcs/releases/tag/v0.3.0-rc.1">Release notes</a>
+  <a href="https://github.com/pagou-com-br/pagou-whmcs/releases/tag/v0.3.0-rc.2">Release notes</a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/pagou-com-br/pagou-whmcs/releases/download/v0.3.0-rc.1/SHA256SUMS">Checksum SHA-256</a>
+  <a href="https://github.com/pagou-com-br/pagou-whmcs/releases/download/v0.3.0-rc.2/SHA256SUMS">Checksum SHA-256</a>
 </p>
 
 <p align="center">
@@ -35,7 +35,7 @@
   <a href="#suporte">Suporte</a>
 </p>
 
-> **Candidata `0.3.0-rc.1`.** Valide a integração em uma instalação de teste antes
+> **Candidata `0.3.0-rc.2`.** Valide a integração em uma instalação de teste antes
 > de adotá-la em produção. Cartão e Split têm escopos específicos nesta versão,
 > descritos na tabela de recursos e no [guia de capacidades](docs/recursos.md).
 
@@ -111,18 +111,20 @@ conciliação compartilham as evidências necessárias para conferir cada recebi
 
 ## Downloads e notas da versão
 
-**`0.3.0-rc.1`** é a primeira candidata da distribuição pública. Ela reúne o
+**`0.3.0-rc.2`** é a segunda candidata da distribuição pública. Ela reúne o
 addon administrativo, os gateways, os fluxos de Pix e boleto, a integração de
-cartão sob habilitação e a consulta de informações de split.
+cartão sob habilitação e a consulta de informações de split. Em relação à
+`0.3.0-rc.1`, corrige a emissão de Pix e boleto, os avisos ao cliente e a
+ativação dos gateways, conforme o [changelog](CHANGELOG.md).
 
 | Arquivo | Finalidade |
 | --- | --- |
-| [**pagou-whmcs-0.3.0-rc.1.zip**](https://github.com/pagou-com-br/pagou-whmcs/releases/download/v0.3.0-rc.1/pagou-whmcs-0.3.0-rc.1.zip) | Pacote instalável, contendo somente `modules/` |
-| [**SHA256SUMS**](https://github.com/pagou-com-br/pagou-whmcs/releases/download/v0.3.0-rc.1/SHA256SUMS) | Checksum para conferir a integridade do ZIP |
-| [**RELEASE_NOTES.md**](https://github.com/pagou-com-br/pagou-whmcs/releases/download/v0.3.0-rc.1/RELEASE_NOTES.md) | Notas que acompanham o pacote desta versão |
+| [**pagou-whmcs-0.3.0-rc.2.zip**](https://github.com/pagou-com-br/pagou-whmcs/releases/download/v0.3.0-rc.2/pagou-whmcs-0.3.0-rc.2.zip) | Pacote instalável, contendo somente `modules/` |
+| [**SHA256SUMS**](https://github.com/pagou-com-br/pagou-whmcs/releases/download/v0.3.0-rc.2/SHA256SUMS) | Checksum para conferir a integridade do ZIP |
+| [**RELEASE_NOTES.md**](https://github.com/pagou-com-br/pagou-whmcs/releases/download/v0.3.0-rc.2/RELEASE_NOTES.md) | Notas que acompanham o pacote desta versão |
 
 Consulte o [changelog](CHANGELOG.md), a
-[página desta release](https://github.com/pagou-com-br/pagou-whmcs/releases/tag/v0.3.0-rc.1)
+[página desta release](https://github.com/pagou-com-br/pagou-whmcs/releases/tag/v0.3.0-rc.2)
 ou [todas as versões](https://github.com/pagou-com-br/pagou-whmcs/releases).
 Os arquivos automáticos **Source code** do GitHub contêm o projeto de
 desenvolvimento; para instalar, utilize o ZIP identificado na tabela.
@@ -231,8 +233,8 @@ Para relatar uma vulnerabilidade, use o [canal privado de segurança](SECURITY.m
 
 ## Qualidade e validação
 
-A candidata `0.3.0-rc.1` foi validada localmente com **545 testes PHP** e
-**36 testes JavaScript**, além de PHPCS, PHPStan, verificações de autoload,
+A candidata `0.3.0-rc.2` foi validada localmente com **597 testes PHP** e
+**40 testes JavaScript**, além de PHPCS, PHPStan, verificações de autoload,
 conteúdo público, montagem e conferência do pacote. A execução PHP usou **8.2**.
 O badge de testes representa essa execução local da candidata.
 

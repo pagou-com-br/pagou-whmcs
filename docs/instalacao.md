@@ -31,6 +31,8 @@ O servidor não precisa de Composer nem de `vendor/` deste repositório.
 3. Nas configurações nativas de gateways do WHMCS, ative **Pagou - Pix** e/ou
    **Pagou - Boleto**, conforme sua habilitação. Nome e visibilidade ficam no
    gateway; as opções funcionais ficam no addon.
+   Um gateway ativado pelo addon começa oculto: para exibi-lo aos clientes,
+   marque **Show on Order Form** no gateway.
 4. Revise as seções Pix e Boleto no addon. Confira vencimento, limites,
    acréscimos, informações de e-mail e PDF. Leia as [regras de encargos](encargos.md)
    antes de configurar multa ou juros.

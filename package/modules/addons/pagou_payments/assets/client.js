@@ -32,6 +32,66 @@
         if (event.persisted && overlay) overlay.hidden = true;
     });
 
+    // A charge refused for the CPF or CNPJ: the customer types it on the invoice,
+    // it is saved in the profile and the charge is issued again.
+    var documentMask = function (value) {
+        var digits = value.replace(/\D+/g, '').slice(0, 14);
+        if (digits.length <= 11) {
+            return digits.replace(/^(\d{3})(\d)/, '$1.$2').replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+                .replace(/^(\d{3})\.(\d{3})\.(\d{3})(\d)/, '$1.$2.$3-$4');
+        }
+        return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2}).*/, '$1.$2.$3/$4-$5');
+    };
+    document.addEventListener('input', function (event) {
+        var input = event.target;
+        if (input instanceof HTMLInputElement && input.name === 'document' && input.closest('[data-pagou-document-form]')) {
+            input.value = documentMask(input.value);
+        }
+    });
+    document.addEventListener('submit', function (event) {
+        var form = event.target;
+        if (!(form instanceof HTMLFormElement) || !form.hasAttribute('data-pagou-document-form') || !window.fetch) return;
+        event.preventDefault();
+        var input = form.querySelector('input[name="document"]');
+        var button = form.querySelector('button[type="submit"]');
+        var feedback = form.querySelector('[data-pagou-document-feedback]');
+        var show = function (message) {
+            feedback.textContent = message;
+            feedback.hidden = false;
+            input.setAttribute('aria-invalid', 'true');
+            button.disabled = false;
+            button.textContent = 'Salvar e gerar';
+            input.focus();
+        };
+        var digits = input.value.replace(/\D+/g, '');
+        if (digits.length !== 11 && digits.length !== 14) {
+            show('Informe os 11 números do CPF ou os 14 do CNPJ.');
+            return;
+        }
+        feedback.hidden = true;
+        input.removeAttribute('aria-invalid');
+        button.disabled = true;
+        button.textContent = 'Salvando...';
+        window.fetch(form.action, {
+            method: 'POST', body: new FormData(form), credentials: 'same-origin', cache: 'no-store',
+            headers: { Accept: 'application/json' }
+        })
+            .then(function (response) {
+                return response.json().catch(function () { return { status: 'unavailable' }; });
+            })
+            .then(function (payload) {
+                if (payload && payload.status === 'ok') {
+                    button.textContent = 'Gerando...';
+                    window.location.reload();
+                    return;
+                }
+                show(payload && typeof payload.message === 'string' ? payload.message : 'Não foi possível salvar agora. Tente novamente em instantes.');
+            })
+            .catch(function () {
+                show('Não foi possível salvar agora. Tente novamente em instantes.');
+            });
+    });
+
     var elements = document.querySelectorAll('[data-pagou-status-url]');
     elements.forEach(function (element) {
         var url = element.getAttribute('data-pagou-status-url');

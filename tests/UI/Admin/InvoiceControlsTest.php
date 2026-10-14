@@ -69,6 +69,39 @@ final class InvoiceControlsTest extends TestCase
         }
     }
 
+    public function testAFailedChargeSaysWhyOnTheCardAtOnce(): void
+    {
+        $html = InvoiceControls::render(['state' => 'failed', 'method' => 'boleto', 'attemptId' => 'failed', 'failure' => 'Falta o <CEP> no cadastro do cliente.'], 10, 'csrf');
+        self::assertStringContainsString('<p class="pagou-invoice-notice pagou-invoice-notice--failure" role="status">Falta o &lt;CEP&gt; no cadastro do cliente.</p>', $html);
+
+        // Without a known reason the notice stays for the outcome of an action.
+        $html = InvoiceControls::render(['state' => 'failed', 'method' => 'boleto', 'attemptId' => 'failed'], 10, 'csrf');
+        self::assertStringContainsString('<p class="pagou-invoice-notice" role="status" hidden></p>', $html);
+        $html = InvoiceControls::render(['state' => 'ready', 'method' => 'boleto', 'attemptId' => 'ready', 'failure' => 'stale'], 10, 'csrf');
+        self::assertStringNotContainsString('stale', $html);
+    }
+
+    public function testAnIssuanceUnderReviewWaitsForTheAdministratorInsteadOfLoadingForever(): void
+    {
+        $summary = ['state' => 'queued', 'method' => 'boleto', 'attemptId' => 'stuck'];
+        self::assertStringContainsString('data-auto-progress="1"', InvoiceControls::render($summary, 10, 'csrf'));
+
+        $html = InvoiceControls::render($summary + ['review' => 'A Pagou não confirmou a emissão deste boleto após três tentativas.'], 10, 'csrf');
+        self::assertStringContainsString('data-auto-progress="0"', $html);
+        self::assertStringContainsString('pagou-invoice-notice--failure" role="status">A Pagou não confirmou a emissão deste boleto após três tentativas.</p>', $html);
+        self::assertStringContainsString('Gerar novo boleto', $html);
+    }
+
+    public function testADraftWaitsForItsPublicationWithoutActionsOrLoading(): void
+    {
+        $html = InvoiceControls::render(['state' => 'draft', 'method' => 'boleto', 'attemptId' => ''], 10, 'test-token');
+        self::assertStringContainsString('pagou-invoice-state--muted', $html);
+        self::assertStringContainsString('Aguardando a publicação da fatura', $html);
+        self::assertStringContainsString('data-auto-progress="0"', $html);
+        self::assertStringNotContainsString('Cancelar cobrança', $html);
+        self::assertStringNotContainsString('Gerar novo boleto', $html);
+    }
+
     public function testPaidInvoiceDoesNotOfferCancellationOrReplacement(): void
     {
         $html = InvoiceControls::render(['state' => 'paid', 'method' => 'boleto', 'attemptId' => 'test', 'remoteId' => 'charge-test',

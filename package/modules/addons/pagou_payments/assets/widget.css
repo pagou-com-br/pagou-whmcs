@@ -49,6 +49,6 @@
 @keyframes pagou-widget-shimmer-text{0%{-webkit-mask-position:200% 0;mask-position:200% 0}100%{-webkit-mask-position:-200% 0;mask-position:-200% 0}}
 @media(prefers-reduced-motion:reduce){.pagou-widget-loading-layer{transition:none}.pagou-widget-pixel-cell{animation:none;opacity:.35}.pagou-widget-loading-label{color:#0b1220}.pagou-widget-loading-label::after{display:none;animation:none}}
 @media(max-width:480px){.pagou-home-header{gap:12px}.pagou-home-widget svg.pagou-home-logo{width:82px;height:34px}.pagou-home-balance>strong{font-size:24px}}
-html.dark .pagou-home-widget,body.dark .pagou-home-widget,body[data-theme="dark"] .pagou-home-widget{--pagou-widget-blue:#86a8ff;--pagou-widget-ink:#e5e7eb;--pagou-widget-muted:#a8b0bd;--pagou-widget-border:#4b5563}
-html.dark .pagou-home-primary,body.dark .pagou-home-primary,body[data-theme="dark"] .pagou-home-primary{background:#2856d9!important;border-color:#2856d9!important}
-html.dark .pagou-home-amount,body.dark .pagou-home-amount,body[data-theme="dark"] .pagou-home-amount{color:#4ade80!important}
+html.dark .pagou-home-widget,body.dark .pagou-home-widget,body[data-theme="dark"] .pagou-home-widget,html[data-darkreader-scheme="dark"] .pagou-home-widget{--pagou-widget-blue:#86a8ff;--pagou-widget-ink:#e5e7eb;--pagou-widget-muted:#a8b0bd;--pagou-widget-border:#4b5563}
+html.dark .pagou-home-primary,body.dark .pagou-home-primary,body[data-theme="dark"] .pagou-home-primary,html[data-darkreader-scheme="dark"] .pagou-home-primary{background:#2856d9!important;border-color:#2856d9!important}
+html.dark .pagou-home-amount,body.dark .pagou-home-amount,body[data-theme="dark"] .pagou-home-amount,html[data-darkreader-scheme="dark"] .pagou-home-amount{color:#4ade80!important}

@@ -39,12 +39,13 @@ final class InvoiceControls
             'refunded' => 'Reembolsado',
             'awaiting_registration' => 'Aguardando registro bancário',
             'unavailable' => 'Indisponível pelas regras configuradas',
+            'draft' => 'Aguardando a publicação da fatura',
             'failed' => 'Falha na emissão',
             default => $method === 'pix' ? 'Aguardando pagamento' : 'Em processamento',
         };
         $stateTone = match ($displayState) {
             'paid', 'ready', 'active' => 'success',
-            'cancelled', 'canceled', 'refunded', 'unavailable' => 'muted',
+            'cancelled', 'canceled', 'refunded', 'unavailable', 'draft' => 'muted',
             'failed' => 'danger',
             default => 'warning',
         };
@@ -90,7 +91,9 @@ final class InvoiceControls
             );
         }
 
-        $autoProgress = $method === 'boleto'
+        // An issuance under review waits for the administrator: the card never keeps loading it.
+        $review = (string) ($summary['review'] ?? '');
+        $autoProgress = $method === 'boleto' && $review === ''
             && (in_array($state, ['pending', 'queued', 'awaiting_registration'], true)
                 || (empty($summary['remoteId']) && in_array($state, ['ready', 'active'], true)));
 
@@ -123,7 +126,15 @@ final class InvoiceControls
             . '</div>'
             . self::refund($refund, $invoiceId)
             . '<footer><div class="pagou-invoice-documents">' . $history . $documents . '</div>' . $actions . '</footer>'
-            . '<p class="pagou-invoice-notice" role="status" hidden></p>' . self::loader() . '</section>';
+            . self::notice($displayState === 'failed' ? (string) ($summary['failure'] ?? '') : $review) . self::loader() . '</section>';
+    }
+
+    /** Why the charge failed, shown at once; otherwise kept for the outcome of an action. */
+    private static function notice(string $failure): string
+    {
+        return $failure === ''
+            ? '<p class="pagou-invoice-notice" role="status" hidden></p>'
+            : '<p class="pagou-invoice-notice pagou-invoice-notice--failure" role="status">' . Html::e($failure) . '</p>';
     }
 
     /** @param array<string,mixed> $refund */

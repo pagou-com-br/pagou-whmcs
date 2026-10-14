@@ -50,6 +50,18 @@ final class GatewayEntrypointTest extends TestCase
         self::assertStringNotContainsString('<script>', $escaped['Description']);
     }
 
+    public function testPixAndBoletoAreNotChargedAutomaticallyByTheWhmcsCron(): void
+    {
+        if (!function_exists('pagou_pix_MetaData')) {
+            $this->testAllGatewayEntrypointsLoadAndExposeExpectedCapabilities();
+        }
+        // A "Bank" type made the daily cron try to charge each open invoice and send the card notice.
+        self::assertSame(['DisplayName', 'APIVersion'], array_keys(pagou_pix_MetaData()));
+        self::assertSame(['DisplayName', 'APIVersion'], array_keys(pagou_boleto_MetaData()));
+        self::assertFalse(function_exists('pagou_pix_capture'));
+        self::assertFalse(function_exists('pagou_boleto_capture'));
+    }
+
     public function testCardCaptureReportsThePagouChargeIdentifierToWhmcs(): void
     {
         if (!function_exists('pagou_creditcard_result')) {

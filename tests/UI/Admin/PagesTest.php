@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Pagou\Payments\Tests\UI\Admin;
 
+use Pagou\Payments\Admin\Support\ReportFormat;
 use Pagou\Payments\Admin\View\AccountPanel;
 use Pagou\Payments\Admin\View\Page;
 use Pagou\Payments\Admin\View\Pages;
@@ -677,5 +678,23 @@ final class PagesTest extends TestCase
         self::assertSame('Cancelamento solicitado', PaymentLabels::label('cancel_requested'));
         self::assertSame('Reembolso parcial', PaymentLabels::label('partially_refunded'));
         self::assertSame('info', Page::tone(PaymentLabels::label('cancel_requested')));
+    }
+
+    public function testEveryFindingTypeAndStateIsNamedInPortuguese(): void
+    {
+        $types = [
+            'boleto_issuance_requires_review', 'charge_issuance_refused', 'card_amount_mismatch', 'card_chargeback_requires_review', 'card_deletion_requires_review',
+            'card_recovery_response_mismatch', 'card_remote_identity_unavailable', 'card_unknown_provider_status', 'due_date_requires_review',
+            'invoice_email_delivery_uncertain', 'invoice_email_template_invalid', 'late_charges_require_review', 'payment_application_failed',
+            'payment_during_cancellation', 'payment_evidence_missing', 'pix_refund_external_requires_review', 'pix_refund_requires_review',
+            'remote_identity_unavailable', 'open', 'resolved', 'needs_review',
+        ];
+        foreach ($types as $type) {
+            // An unknown value falls back to its code with spaces, which reads as English.
+            self::assertNotSame(ucfirst(str_replace('_', ' ', $type)), PaymentLabels::label($type), $type);
+            self::assertNotSame(ucfirst(str_replace('_', ' ', $type)), ReportFormat::label($type), $type);
+        }
+        self::assertSame('Emissão do boleto requer conferência', ReportFormat::label('boleto_issuance_requires_review'));
+        self::assertSame('Resolvida', PaymentLabels::label('resolved'));
     }
 }

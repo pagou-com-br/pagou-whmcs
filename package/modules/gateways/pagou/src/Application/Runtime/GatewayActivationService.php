@@ -51,7 +51,7 @@ final class GatewayActivationService
 
         $after = $this->status($gateway);
         if (!$after['active']) {
-            throw new \RuntimeException('O WHMCS não confirmou a ativação do gateway.');
+            throw new ActivationRefused('O WHMCS não confirmou a ativação do gateway.');
         }
         if ($after['visible']) {
             $this->hide($gateway);
@@ -92,7 +92,7 @@ final class GatewayActivationService
 
         $after = $this->status($gateway);
         if (!$after['active'] || $after['visible']) {
-            throw new \RuntimeException('O WHMCS não confirmou que o gateway permaneceu ativo e oculto.');
+            throw new ActivationRefused('O WHMCS não confirmou que o gateway permaneceu ativo e oculto.');
         }
     }
 
@@ -103,7 +103,7 @@ final class GatewayActivationService
             return;
         }
 
-        throw new \RuntimeException('O WHMCS não conseguiu ' . $operation . '.');
+        throw new ActivationRefused('O WHMCS não conseguiu ' . $operation . '.');
     }
 
     /**

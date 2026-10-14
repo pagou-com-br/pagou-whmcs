@@ -14,9 +14,14 @@ final class ClientDocumentResolver
     ) {
     }
 
-    /** @param array<string, mixed> $client */
+    /**
+     * The first valid CPF or CNPJ in the configured fields, by check digits: a wrong
+     * number is skipped, so a valid one in another field is still used.
+     * @param array<string, mixed> $client
+     */
     public function resolve(array $client, int $clientId): string
     {
+        $invalid = false;
         $ids = $this->settings->documentFieldIds();
         $fields = $client['customfields']['customfield'] ?? [];
         if (is_array($fields) && !array_is_list($fields)) {
@@ -28,9 +33,10 @@ final class ClientDocumentResolver
                     continue;
                 }
                 $document = $this->normalise($field['value'] ?? null);
-                if ($document !== null) {
+                if (is_string($document)) {
                     return $document;
                 }
+                $invalid = $invalid || $document === false;
             }
         }
 
@@ -53,22 +59,28 @@ final class ClientDocumentResolver
             }
             foreach ($ids as $id) {
                 $document = $this->normalise($stored[$id] ?? null);
-                if ($document !== null) {
+                if (is_string($document)) {
                     return $document;
                 }
+                $invalid = $invalid || $document === false;
             }
         }
 
-        throw new \RuntimeException('CPF ou CNPJ não encontrado nos campos configurados.');
+        throw new \RuntimeException($invalid
+            ? 'CPF ou CNPJ inválido nos campos configurados.'
+            : 'CPF ou CNPJ não encontrado nos campos configurados.');
     }
 
-    private function normalise(mixed $value): ?string
+    /** The digits of a valid document, null for an empty field and false for a wrong number. */
+    private function normalise(mixed $value): string|false|null
     {
-        if (!is_scalar($value)) {
+        if (!is_scalar($value) || trim((string) $value) === '') {
             return null;
         }
-        $document = preg_replace('/\D+/', '', (string) $value) ?? '';
-
-        return in_array(strlen($document), [11, 14], true) ? $document : null;
+        try {
+            return \Pagou\Whmcs\Domain\Document::fromString((string) $value)->digits();
+        } catch (\InvalidArgumentException) {
+            return false;
+        }
     }
 }

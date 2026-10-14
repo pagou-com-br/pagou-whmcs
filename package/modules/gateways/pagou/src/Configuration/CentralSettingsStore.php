@@ -16,6 +16,8 @@ final class CentralSettingsStore
         'cpf_field_id' => '',
         'cnpj_field_id' => '',
         'prefer_cnpj' => '0',
+        'document_check_on_profile' => '1',
+        'notify_refused_charge' => '0',
         'worker_max_jobs' => '25',
         'worker_max_seconds' => '20',
         'retention_operational_days' => '90',
@@ -75,8 +77,8 @@ final class CentralSettingsStore
     /** @var array<string, list<string>> */
     private const SECTIONS = [
         'general' => [
-            'cpf_field_id', 'cnpj_field_id', 'prefer_cnpj', 'worker_max_jobs', 'worker_max_seconds',
-            'retention_operational_days', 'admin_alerts_enabled',
+            'cpf_field_id', 'cnpj_field_id', 'prefer_cnpj', 'document_check_on_profile', 'notify_refused_charge',
+            'worker_max_jobs', 'worker_max_seconds', 'retention_operational_days', 'admin_alerts_enabled',
         ],
         'pix' => [
             'pix_late_charges_reviewed', 'pix_due_enabled', 'pix_expiration_seconds', 'pix_due_expiration_days',
@@ -244,6 +246,8 @@ final class CentralSettingsStore
             'cpf_field_id' => $this->optionalId($values['cpf_field_id'] ?? '', 'CPF/CNPJ'),
             'cnpj_field_id' => $this->optionalId($values['cnpj_field_id'] ?? '', 'CNPJ alternativo'),
             'prefer_cnpj' => $this->boolean($values['prefer_cnpj'] ?? ''),
+            'document_check_on_profile' => $this->boolean($values['document_check_on_profile'] ?? ''),
+            'notify_refused_charge' => $this->boolean($values['notify_refused_charge'] ?? ''),
             'worker_max_jobs' => $this->integer($values, 'worker_max_jobs', 1, 200, 'Operações por execução'),
             'worker_max_seconds' => $this->integer($values, 'worker_max_seconds', 10, 300, 'Orçamento do worker'),
             'retention_operational_days' => $this->integer($values, 'retention_operational_days', 30, 730, 'Retenção operacional'),

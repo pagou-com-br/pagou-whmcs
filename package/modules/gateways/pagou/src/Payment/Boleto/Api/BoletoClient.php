@@ -68,7 +68,14 @@ final class BoletoClient
         string $message,
         \Pagou\Whmcs\Payment\Boleto\Contracts\HttpResponse $response,
     ): BoletoApiException {
-        $kind = is_string($response->json['kind'] ?? null) ? $response->json['kind'] : '';
+        // The charges API answers errors as {"error": "...", "code": "..."}.
+        $kind = '';
+        foreach (['kind', 'error', 'code'] as $field) {
+            if (is_string($response->json[$field] ?? null) && $response->json[$field] !== '') {
+                $kind = $response->json[$field];
+                break;
+            }
+        }
 
         return new BoletoApiException($message, $response->status, $kind, retryAt: \Pagou\Whmcs\Infrastructure\Http\RetryAfter::parse($response->header('Retry-After')));
     }

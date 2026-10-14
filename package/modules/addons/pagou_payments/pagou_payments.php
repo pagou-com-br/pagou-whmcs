@@ -11,6 +11,7 @@ require_once dirname(__DIR__, 2) . '/gateways/pagou/bootstrap.php';
 use Pagou\Payments\Admin\Controller;
 use Pagou\Payments\Admin\View\AccountPanel;
 use Pagou\Payments\Admin\Widget\AccountSummary;
+use Pagou\Whmcs\Application\Runtime\ActivationRefused;
 use Pagou\Whmcs\Application\Runtime\GatewayActivationService;
 use Pagou\Whmcs\Application\Runtime\RuntimeFactory;
 use Pagou\Whmcs\Application\Runtime\OperationalReadModel;
@@ -413,7 +414,8 @@ function pagou_payments_activate_gateways(PDO $pdo, array $gateways): array
                 $alreadyActive[] = $result['label'];
             }
         } catch (Throwable $exception) {
-            $failed[] = pagou_payments_gateway_label($gateway);
+            $failed[] = 'Não foi possível ativar ' . pagou_payments_gateway_label($gateway) . '. '
+                . ($exception instanceof ActivationRefused ? $exception->getMessage() : 'Confira o diagnóstico antes de tentar novamente.');
             $manualReview = $manualReview || pagou_payments_gateway_is_visible($pdo, $gateway);
             if (function_exists('logActivity')) {
                 logActivity('Pagou Payments: ativação assistida recusada. ' . $exception::class);
@@ -423,7 +425,8 @@ function pagou_payments_activate_gateways(PDO $pdo, array $gateways): array
 
     $parts = [];
     if ($activated !== []) {
-        $parts[] = implode(' e ', $activated) . ' ativado(s) e mantido(s) oculto(s) para teste controlado.';
+        $parts[] = implode(' e ', $activated) . ' ativado(s) e mantido(s) oculto(s) para teste controlado. '
+            . pagou_payments_visibility_hint();
     }
     if ($alreadyActive !== []) {
         $parts[] = implode(' e ', $alreadyActive) . ' já estava(m) ativo(s); nenhuma configuração foi alterada.';
@@ -432,7 +435,7 @@ function pagou_payments_activate_gateways(PDO $pdo, array $gateways): array
         $parts[] = implode(' e ', $visibilityCorrected) . ' já estava(m) ativo(s) e agora permanece(m) oculto(s).';
     }
     if ($failed !== []) {
-        $parts[] = 'Não foi possível ativar ' . implode(' e ', $failed) . '. Confira o diagnóstico antes de tentar novamente.';
+        $parts[] = implode(' ', $failed);
     }
     if ($manualReview) {
         $parts[] = 'Atenção: confira e oculte imediatamente o gateway na configuração de pagamentos do WHMCS.';
@@ -461,11 +464,19 @@ function pagou_payments_assert_gateway_activation_ready(PDO $pdo, string $gatewa
 {
     $settings = (new CentralSettingsStore($pdo))->values();
     if (trim((string) ($settings['cpf_field_id'] ?? '')) === '') {
-        throw new InvalidArgumentException('Selecione o campo principal de CPF ou CNPJ antes de ativar os gateways.');
+        throw new ActivationRefused('Selecione o campo principal de CPF ou CNPJ antes de ativar os gateways.');
     }
 
-    $credential = pagou_payments_current_credential($pdo);
-    pagou_payments_api_client($credential)->request('GET', '/v1/customers/balance');
+    try {
+        $credential = pagou_payments_current_credential($pdo);
+    } catch (RuntimeException) {
+        throw new ActivationRefused('Salve a chave de API da Pagou antes de ativar os gateways.');
+    }
+    try {
+        pagou_payments_api_client($credential)->request('GET', '/v1/customers/balance');
+    } catch (Throwable $exception) {
+        throw ActivationRefused::connection($exception);
+    }
 
     if ($gateway === 'pagou_creditcard') {
         pagou_payments_assert_card_ready($pdo, $credential, true);
@@ -475,16 +486,20 @@ function pagou_payments_assert_gateway_activation_ready(PDO $pdo, string $gatewa
 function pagou_payments_assert_card_ready(PDO $pdo, ?string $credential = null, bool $probeApi = false): void
 {
     $settings = \Pagou\Whmcs\Application\Runtime\AddonSettings::fromPdo($pdo);
-    \Pagou\Whmcs\Payment\Card\CardCheckoutPolicy::assertSupported($settings->integer('card_max_installments', 1), $settings->boolean('card_auto_capture', true));
+    try {
+        \Pagou\Whmcs\Payment\Card\CardCheckoutPolicy::assertSupported($settings->integer('card_max_installments', 1), $settings->boolean('card_auto_capture', true));
+    } catch (InvalidArgumentException $exception) {
+        throw new ActivationRefused($exception->getMessage(), 0, $exception);
+    }
     foreach (['curl', 'json', 'openssl', 'pdo'] as $extension) {
         if (!extension_loaded($extension)) {
-            throw new RuntimeException('A extensão PHP ' . $extension . ' é obrigatória para o cartão.');
+            throw new ActivationRefused('A extensão PHP ' . $extension . ' é obrigatória para o cartão.');
         }
     }
     $migration = $pdo->prepare('SELECT 1 FROM pagou_schema_migrations WHERE version = :version LIMIT 1');
     $migration->execute(['version' => '013']);
     if ($migration->fetchColumn() === false) {
-        throw new RuntimeException('Atualize o addon Pagou antes de ativar o cartão.');
+        throw new ActivationRefused('Atualize o addon Pagou antes de ativar o cartão.');
     }
     foreach (
         [
@@ -493,13 +508,23 @@ function pagou_payments_assert_card_ready(PDO $pdo, ?string $credential = null, 
         ] as $file
     ) {
         if (!is_file($file) || !is_readable($file)) {
-            throw new RuntimeException('A instalação do fluxo seguro de cartão está incompleta.');
+            throw new ActivationRefused('A instalação do fluxo seguro de cartão está incompleta. Atualize o addon Pagou.');
         }
     }
     if ($probeApi) {
-        pagou_payments_api_client($credential ?? pagou_payments_current_credential($pdo))
-            ->request('GET', '/v1/creditcard/customers');
+        try {
+            pagou_payments_api_client($credential ?? pagou_payments_current_credential($pdo))
+                ->request('GET', '/v1/creditcard/customers');
+        } catch (Throwable $exception) {
+            throw ActivationRefused::card($exception);
+        }
     }
+}
+
+/** Where a gateway activated hidden is shown to customers, in the WHMCS settings. */
+function pagou_payments_visibility_hint(): string
+{
+    return 'Para oferecer aos clientes, abra Gateways de Pagamento nas configurações do WHMCS e marque "Show on Order Form" no gateway.';
 }
 
 function pagou_payments_gateway_label(string $gateway): string
@@ -536,6 +561,7 @@ function pagou_payments_run_diagnostics(PDO $pdo): array
     $notice = 'Conexão técnica verificada. O diagnóstico não confirma credenciamento nem homologação de cartão. Nenhuma cobrança foi criada.';
     $tone = 'success';
     $cardReady = false;
+    $cardReason = '';
     try {
         $credential = pagou_payments_current_credential($pdo);
         pagou_payments_api_client($credential)->request('GET', '/v1/customers/balance');
@@ -544,8 +570,9 @@ function pagou_payments_run_diagnostics(PDO $pdo): array
             pagou_payments_assert_card_ready($pdo, $credential, true);
             pagou_payments_write_operational_setting($pdo, 'diagnostics_card_state', 'ready');
             $cardReady = true;
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
             pagou_payments_write_operational_setting($pdo, 'diagnostics_card_state', 'attention');
+            $cardReason = $exception instanceof ActivationRefused ? $exception->getMessage() : '';
         }
     } catch (Throwable) {
         pagou_payments_write_operational_setting($pdo, 'diagnostics_api_state', 'attention');
@@ -553,8 +580,9 @@ function pagou_payments_run_diagnostics(PDO $pdo): array
         $notice = 'Diagnóstico concluído com atenção na conexão Pagou. Nenhuma cobrança foi criada.';
         $tone = 'danger';
     }
+    pagou_payments_write_operational_setting($pdo, 'diagnostics_card_reason', $cardReason);
     if ($tone === 'success' && !$cardReady) {
-        $notice = 'Diagnóstico geral concluído. O cartão ainda requer atenção antes da ativação.';
+        $notice = trim('Diagnóstico geral concluído. O cartão ainda requer atenção antes da ativação. ' . $cardReason);
         $tone = 'warning';
     }
     pagou_payments_write_operational_setting($pdo, 'diagnostics_api_checked_utc', gmdate('Y-m-d H:i:s.u'));

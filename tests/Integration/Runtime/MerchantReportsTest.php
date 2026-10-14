@@ -447,6 +447,21 @@ final class MerchantReportsTest extends TestCase
         self::assertStringContainsString('Continua valendo para pagamento até a fatura ser paga.', $html);
     }
 
+    public function testDetailExplainsWhyAChargeCouldNotBeIssued(): void
+    {
+        $attempt = $this->invoice(9, 20, '100', '0', 'Unpaid', '2026-09-10', 'pagou_boleto');
+        $this->pdo->prepare('INSERT INTO pagou_payment_operations (id,operation_type,status,deduplication_key,priority,payload_json,available_at,created_at,updated_at,attempt_id,error_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            ->execute(['issue', 'issue_boleto', 'failed', hash('sha256', 'issue'), 100, '{}', '2026-09-09', '2026-09-09', '2026-09-09 10:00:00', $attempt, 'boleto_request_rejected:invalid_customer_document']);
+        (new PaymentAttemptStore($this->pdo))->recordFailure($attempt, 'pix_local_validation:missing_zip');
+
+        $html = (new MerchantReports())->detail(['detail' => $this->model->detail(9)]);
+
+        self::assertStringContainsString('A Pagou recusou o CPF ou CNPJ do cliente. Corrija o cadastro e gere a cobrança novamente.', $html);
+        self::assertStringContainsString('Falta o CEP no cadastro do cliente.', $html);
+        self::assertStringNotContainsString('invalid_customer_document', $html);
+        self::assertStringNotContainsString('response_json', $html);
+    }
+
     public function testDetailResolvesNotificationJobWithTheActualInboxDeduplicationKey(): void
     {
         $attempt = $this->invoice(1, 20, '100', '0', 'Unpaid', '2026-09-17');

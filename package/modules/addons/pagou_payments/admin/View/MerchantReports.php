@@ -379,12 +379,15 @@ final class MerchantReports
             $title = match ((string) $row['method']) {
                 'pix' => 'Cobrança Pix criada', 'boleto' => 'Cobrança por boleto criada', 'card' => 'Cobrança no cartão criada', default => 'Cobrança criada',
             };
-            $add((string) $row['created_at'], $title, 'Valor ' . F::money((int) $row['amount_cents']) . '. Situação atual: ' . $status . '.', 'neutral', 'receipt');
+            $why = \Pagou\Whmcs\Presentation\OperationDetails::reason((string) ($row['failure'] ?? ''));
+            $add((string) $row['created_at'], $title, 'Valor ' . F::money((int) $row['amount_cents']) . '. Situação atual: ' . $status . '.' . ($why !== null ? ' ' . $why . '.' : ''), 'neutral', 'receipt');
         }
         foreach ($detail['operations'] ?? [] as $row) {
             $status = F::label((string) $row['status']);
             $runs = (int) $row['attempts'];
-            $add((string) $row['updated_at'], F::label((string) $row['operation_type']), $status . ($runs > 1 ? ', após ' . $runs . ' execuções' : '') . '.', Page::tone($status), 'activity');
+            $why = in_array((string) $row['status'], ['failed', 'uncertain'], true) || (string) ($row['error_message'] ?? '') === 'settled_by_charge_state'
+                ? \Pagou\Whmcs\Presentation\OperationDetails::reason((string) ($row['error_message'] ?? '')) : null;
+            $add((string) $row['updated_at'], F::label((string) $row['operation_type']), $status . ($runs > 1 ? ', após ' . $runs . ' execuções' : '') . '.' . ($why !== null ? ' ' . $why . '.' : ''), Page::tone($status), 'activity');
         }
         foreach ($detail['notifications'] ?? [] as $row) {
             $type = (string) $row['event_type'] === 'unknown' ? 'tipo não reconhecido' : F::label((string) $row['event_type']);

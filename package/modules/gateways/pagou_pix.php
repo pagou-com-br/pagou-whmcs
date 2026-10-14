@@ -13,7 +13,9 @@ use Pagou\Whmcs\Application\Runtime\AddonSettings;
 
 function pagou_pix_MetaData(): array
 {
-    return ['DisplayName' => 'Pagou - Pix', 'APIVersion' => '1.1', 'gatewayType' => 'Bank'];
+    // No gatewayType: "Bank" marks a direct debit module, and the WHMCS cron then tries to
+    // charge every open invoice each day and emails the card payment notice.
+    return ['DisplayName' => 'Pagou - Pix', 'APIVersion' => '1.1'];
 }
 
 function pagou_pix_config(): array

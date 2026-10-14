@@ -48,4 +48,26 @@ final class VisualContractTest extends TestCase
         self::assertStringNotContainsString('Arial,sans-serif', $css);
         self::assertStringNotContainsString('@media (prefers-color-scheme: dark)', $css);
     }
+
+    /**
+     * DarkReader-based dark modes (browser extension and admin addons) mark the
+     * page only with html[data-darkreader-scheme="dark"]. Every dark rule must
+     * also answer to it, otherwise DarkReader repaints the light palette, such
+     * as the invoice card gradient, instead of using ours.
+     */
+    public function testEveryDarkRuleAlsoMatchesDarkReader(): void
+    {
+        $assets = dirname(__DIR__, 3) . '/package/modules/addons/pagou_payments/assets/';
+        foreach (['admin.css', 'invoice-admin.css', 'widget.css', 'payment-parties.css'] as $file) {
+            $css = file_get_contents($assets . $file);
+            self::assertIsString($css);
+            preg_match_all('/body\[data-theme="dark"\] ([^,{]+?)\s*[,{]/', $css, $themed);
+            preg_match_all('/html\[data-darkreader-scheme="dark"\] ([^,{]+?)\s*[,{]/', $css, $darkReader);
+            self::assertNotEmpty($themed[1], $file);
+            self::assertSame($themed[1], $darkReader[1], $file);
+        }
+
+        $invoice = (string) file_get_contents($assets . 'invoice-admin.css');
+        self::assertStringContainsString('html[data-darkreader-scheme="dark"] .pagou-invoice-admin {', $invoice);
+    }
 }

@@ -21,4 +21,4 @@
 .pagou-party-search:hover, .pagou-party-search:focus-visible { border-bottom-style: solid; color: #2856d9; text-decoration: none; }
 .pagou-party-search:hover svg, .pagou-party-search:focus-visible svg { opacity: 1; }
 .pagou-party-search:focus-visible { border-radius: 2px; outline: 2px solid #2856d9; outline-offset: 2px; }
-html.dark .pagou-party-search:hover, body.dark .pagou-party-search:hover, body[data-theme="dark"] .pagou-party-search:hover { color: #8fb0ff; }
+html.dark .pagou-party-search:hover, body.dark .pagou-party-search:hover, body[data-theme="dark"] .pagou-party-search:hover, html[data-darkreader-scheme="dark"] .pagou-party-search:hover { color: #8fb0ff; }

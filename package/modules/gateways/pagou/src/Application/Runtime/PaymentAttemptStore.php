@@ -198,10 +198,13 @@ final class PaymentAttemptStore
         return $superseded;
     }
 
-    /** @return list<array{id:string,method:string,remote_id:string}> */
-    public function supersedeInvoice(int $invoiceId): array
+    /**
+     * @param list<string> $keepRemoteIds Charges that must stay as they are, such as a paid one.
+     * @return list<array{id:string,method:string,remote_id:string}>
+     */
+    public function supersedeInvoice(int $invoiceId, array $keepRemoteIds = []): array
     {
-        return $this->supersedeActive($invoiceId, '');
+        return $this->supersedeActive($invoiceId, '', null, null, $keepRemoteIds);
     }
 
     /** @return array<string, mixed>|null */
@@ -239,6 +242,25 @@ final class PaymentAttemptStore
         return $row === false ? null : $row;
     }
 
+    /**
+     * Keeps why the charge could not be issued, as a stable code, with the charge itself.
+     * A payer fingerprint marks a refusal of the customer data, kept until that data changes.
+     */
+    public function recordFailure(string $attemptId, string $reason, ?string $payer = null): void
+    {
+        $row = $this->find($attemptId);
+        if ($row === null || $reason === '') {
+            return;
+        }
+        $response = $this->decode((string) ($row['response_json'] ?? ''));
+        $response['failure'] = substr($reason, 0, 120);
+        if ($payer !== null) {
+            $response['payer'] = $payer;
+        }
+        $statement = $this->pdo->prepare('UPDATE pagou_payment_attempts SET response_json = :response, updated_at = :updated_at WHERE id = :id');
+        $statement->execute(['response' => json_encode($response, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES), 'updated_at' => $this->now(), 'id' => $attemptId]);
+    }
+
     public function markStatus(string $attemptId, string $status): void
     {
         if (!in_array($status, ['cancel_requested', 'cancelled', 'paid', 'superseded', 'failed', 'uncertain'], true)) {
@@ -254,8 +276,11 @@ final class PaymentAttemptStore
         }
     }
 
-    /** @return list<array{id:string,method:string,remote_id:string}> */
-    private function supersedeActive(int $invoiceId, string $replacementId, ?string $method = null, ?string $onlyId = null): array
+    /**
+     * @param list<string> $keepRemoteIds
+     * @return list<array{id:string,method:string,remote_id:string}>
+     */
+    private function supersedeActive(int $invoiceId, string $replacementId, ?string $method = null, ?string $onlyId = null, array $keepRemoteIds = []): array
     {
         $parameters = ['invoice_id' => $invoiceId];
         $filter = '';
@@ -270,6 +295,14 @@ final class PaymentAttemptStore
         if ($onlyId !== null) {
             $filter .= ' AND id = :only_id';
             $parameters['only_id'] = $onlyId;
+        }
+        $keep = [];
+        foreach ($keepRemoteIds as $index => $remoteId) {
+            $keep[] = ':keep_' . $index;
+            $parameters['keep_' . $index] = $remoteId;
+        }
+        if ($keep !== []) {
+            $filter .= " AND (remote_id IS NULL OR remote_id = '' OR remote_id NOT IN (" . implode(', ', $keep) . '))';
         }
         $sql = "SELECT id, method, remote_id FROM pagou_payment_attempts WHERE invoice_id = :invoice_id "
             . "AND status NOT IN ('paid', 'cancelled', 'canceled', 'failed', 'refunded', 'superseded')" . $filter;
@@ -328,7 +361,8 @@ final class PaymentAttemptStore
                 . 'updated_at = :updated_at, version = version + 1 WHERE id = :id'
             );
             $update->execute([
-                'remote_id' => $remoteId,
+                // A charge never issued has no identity: an empty one would collide on the unique key.
+                'remote_id' => $remoteId === '' ? null : $remoteId,
                 'status' => $status,
                 'split_snapshot' => $splitJson,
                 'updated_at' => $now,
@@ -349,7 +383,7 @@ final class PaymentAttemptStore
                 'method' => $attempt['method'],
                 'status' => $status,
                 'amount_cents' => $attempt['amount_cents'],
-                'remote_id' => $remoteId,
+                'remote_id' => $remoteId === '' ? null : $remoteId,
                 'display_json' => $json,
                 'refreshed_at_utc' => $now,
             ]);

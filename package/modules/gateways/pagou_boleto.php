@@ -13,7 +13,9 @@ use Pagou\Whmcs\Application\Runtime\AddonSettings;
 
 function pagou_boleto_MetaData(): array
 {
-    return ['DisplayName' => 'Pagou - Boleto', 'APIVersion' => '1.1', 'gatewayType' => 'Bank'];
+    // No gatewayType: "Bank" marks a direct debit module, and the WHMCS cron then tries to
+    // charge every open invoice each day and emails the card payment notice.
+    return ['DisplayName' => 'Pagou - Boleto', 'APIVersion' => '1.1'];
 }
 
 function pagou_boleto_config(): array

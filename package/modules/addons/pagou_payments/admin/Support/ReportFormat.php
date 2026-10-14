@@ -73,6 +73,8 @@ final class ReportFormat
             'card_recovery_response_mismatch' => 'Resposta do cartão divergente',
             'issue_pix' => 'Emitir Pix', 'issue_boleto' => 'Emitir boleto', 'fetch_boleto_pdf' => 'Preparar PDF',
             'invoice_email_delivery_uncertain' => 'Envio de e-mail requer conferência',
+            'boleto_issuance_requires_review' => 'Emissão do boleto requer conferência',
+            'charge_issuance_refused' => 'Cobrança não emitida',
             'invoice_email_template_invalid' => 'Template de e-mail inválido',
             'deliver_invoice_email' => 'Enviar instruções por e-mail', 'reconcile_payment' => 'Consultar pagamento',
             'reconcile_uncertain_operation' => 'Consultar resultado incerto', 'replace_boleto' => 'Confirmar cancelamento do boleto',

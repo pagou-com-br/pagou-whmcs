@@ -45,7 +45,7 @@ namespace Pagou\Whmcs\Application\Runtime {
         }
         public static function localApi(): callable
         {
-            return static fn (): array => ['result' => 'success', 'customfields' => ['customfield' => [['id' => 1, 'value' => '12345678901']]]];
+            return static fn (): array => ['result' => 'success', 'customfields' => ['customfield' => [['id' => 1, 'value' => '52998224725']]]];
         }
         public static function card(): object
         {
@@ -208,7 +208,7 @@ namespace {
     $customer = '11111111-1111-4111-8111-111111111111';
     $GLOBALS['newCard'] = '22222222-2222-4222-8222-222222222222';
     $GLOBALS['oldReference'] = (new \Pagou\Whmcs\Payment\Card\RemoteCardReference($customer, '33333333-3333-4333-8333-333333333333'))->encode();
-    (new \Pagou\Whmcs\Payment\Card\Infrastructure\PdoCardCustomerStore($GLOBALS['pdo']))->save(7, $customer, '12345678901');
+    (new \Pagou\Whmcs\Payment\Card\Infrastructure\PdoCardCustomerStore($GLOBALS['pdo']))->save(7, $customer, '52998224725');
     $store = new \Pagou\Whmcs\Payment\Card\RemoteInput\PdoRemoteInputSessionStore($GLOBALS['pdo']);
     $workflow = $scenario['workflow'] ?? 'payment';
     $session = $store->issue($workflow, 7, $workflow === 'payment' ? 19 : null, $workflow === 'update' ? 1 : null, 1200, 'BRL', $GLOBALS['oldReference']);

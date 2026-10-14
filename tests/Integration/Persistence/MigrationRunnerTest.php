@@ -24,8 +24,8 @@ final class MigrationRunnerTest extends TestCase
         $runner->migrate($migrations);
         $runner->migrate($migrations);
 
-        self::assertSame(16, (int) $pdo->query('SELECT COUNT(*) FROM pagou_schema_migrations')->fetchColumn());
-        foreach (['pagou_payment_attempts', 'pagou_payment_operations', 'pagou_payment_artifacts', 'pagou_webhook_deliveries', 'pagou_ledger_entries', 'pagou_card_transactions', 'pagou_card_refunds', 'pagou_card_disputes', 'pagou_card_customers', 'pagou_card_remote_input_sessions'] as $table) {
+        self::assertSame(17, (int) $pdo->query('SELECT COUNT(*) FROM pagou_schema_migrations')->fetchColumn());
+        foreach (['pagou_payment_attempts', 'pagou_payment_operations', 'pagou_payment_artifacts', 'pagou_webhook_deliveries', 'pagou_ledger_entries', 'pagou_card_transactions', 'pagou_card_refunds', 'pagou_card_disputes', 'pagou_card_customers', 'pagou_card_remote_input_sessions', 'pagou_customer_notices'] as $table) {
             self::assertSame($table, $pdo->query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = '{$table}'")->fetchColumn());
         }
     }

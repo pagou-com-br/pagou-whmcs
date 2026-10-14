@@ -180,6 +180,33 @@ final class CurrentPaymentPipelineTest extends TestCase
         self::assertSame(1, (int) $pdo->query('SELECT COUNT(*) FROM tblinvoiceitems')->fetchColumn());
     }
 
+    /** @return array<string, array{string, string}> */
+    public static function boletoPaymentDates(): array
+    {
+        return [
+            'bank time without offset' => ['2026-10-09T08:34:10', '2026-10-09 11:34:10'],
+            'bank date only' => ['2026-10-09', '2026-10-09 03:00:00'],
+            'explicit offset' => ['2026-10-09T11:34:10Z', '2026-10-09 11:34:10'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('boletoPaymentDates')]
+    public function testBoletoPaymentDateWithoutOffsetIsBrasiliaTime(string $paidIn, string $utc): void
+    {
+        $pdo = $this->pdo();
+        $attempts = new PaymentAttemptStore($pdo);
+        $attempt = $attempts->ensureCurrent(19, 7, 'boleto', 1000, '2026-09-20');
+        (new PdoBoletoAttemptRepository($pdo, 7))->save(new BoletoAttempt($attempt['id'], '19', 1, 1000, '2026-09-20', $attempt['idempotency_key'], remoteId: 'boleto-19'));
+        $attempts->complete($attempt['id'], 'boleto-19', 'ready', ['state' => 'ready']);
+        // The bank reports the boleto settlement in Brasília time and Pagou forwards it as is.
+        $this->receive($pdo, ['name' => 'charge.paid', 'data' => [
+            'id' => 'boleto-19', 'transaction_id' => 'receipt-boleto-19', 'amount' => ['paid' => 10], 'paid_in' => $paidIn,
+        ]], 0);
+        $calls = [];
+        $this->runtime($pdo, 'boleto', $calls)->runWorker();
+        self::assertStringStartsWith($utc, (string) $pdo->query("SELECT payment_at_utc FROM pagou_ledger_entries WHERE entry_type = 'received_payment'")->fetchColumn());
+    }
+
     public function testBoletoPaidThroughItsEmbeddedPixIsBookedWithTheTxidAndNeverCancelled(): void
     {
         $pdo = $this->pdo();

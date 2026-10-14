@@ -97,6 +97,11 @@ final class PaymentLabels
             'card_deletion_requires_review' => 'Remoção do cartão requer revisão', 'pix_refund_requires_review' => 'Reembolso Pix requer conferência',
             'pix_refund_external_requires_review' => 'Devolução Pix sem solicitação no módulo', 'card_recovery_response_mismatch' => 'Resposta do cartão divergente',
             'invoice_email_delivery_uncertain' => 'Envio de e-mail requer conferência',
+            'invoice_email_template_invalid' => 'Template de e-mail inválido',
+            'boleto_issuance_requires_review' => 'Emissão do boleto requer conferência',
+            'charge_issuance_refused' => 'Cobrança não emitida',
+            // Finding states.
+            'resolved' => 'Resolvida', 'needs_review' => 'Requer revisão',
         ];
         if (isset($labels[$value])) {
             return $labels[$value];

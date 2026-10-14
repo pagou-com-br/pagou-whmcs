@@ -108,6 +108,38 @@ add_hook('InvoicePaid', 1, static function (array $vars): void {
     }
 });
 
+// A wrong CPF or CNPJ is refused on registration and on a profile edit, before any charge.
+add_hook('ClientDetailsValidation', 1, static function (array $vars): array {
+    try {
+        $settings = \Pagou\Whmcs\Application\Runtime\AddonSettings::fromPdo(RuntimeFactory::pdo());
+
+        return \Pagou\Whmcs\Application\Runtime\ClientDocumentValidation::errors($vars, $settings);
+    } catch (Throwable $exception) {
+        // The module never blocks a registration because its own check is unavailable.
+        logActivity('Pagou Payments: conferência local do CPF ou CNPJ indisponível. ' . $exception::class);
+
+        return [];
+    }
+});
+
+// A registration corrected in the profile, by the customer or an admin, issues again the
+// charges refused for it. It runs once the request ends, when every custom field is saved.
+add_hook('ClientEdit', 1, static function (array $vars): void {
+    static $pending = [];
+    $clientId = (int) ($vars['userid'] ?? 0);
+    if ($clientId < 1 || isset($pending[$clientId])) {
+        return;
+    }
+    $pending[$clientId] = true;
+    register_shutdown_function(static function () use ($clientId): void {
+        try {
+            RuntimeFactory::runtime()->retryRefusedCharges($clientId);
+        } catch (Throwable $exception) {
+            logActivity('Pagou Payments: não foi possível preparar de novo as cobranças recusadas do cliente. ' . $exception::class, $clientId);
+        }
+    });
+});
+
 add_hook('InvoiceCancelled', 1, static function (array $vars): void {
     try {
         RuntimeFactory::runtime()->scheduleInvoice((int) ($vars['invoiceid'] ?? 0));

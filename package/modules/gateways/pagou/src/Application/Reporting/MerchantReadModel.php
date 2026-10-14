@@ -64,7 +64,8 @@ final class MerchantReadModel
             // Oldest due date first, so overdue invoices lead the collection list.
             'openRows' => array_slice($openRows, 0, 5),
             'trend' => $this->daily($recent, $trend),
-            'recent' => array_slice($recent, 0, 6),
+            // Five, as the open invoices beside it, so both cards keep the same height.
+            'recent' => array_slice($recent, 0, 5),
             'lastMonth' => $this->summary($this->receipts($lastMonth)) + [
                 'from' => $previousStart->format('Y-m-d'), 'to' => $previousEnd->format('Y-m-d'),
             ],
@@ -338,8 +339,9 @@ final class MerchantReadModel
                 'date' => (string) $row['detected_at_utc'], 'method' => $this->method((string) ($row['method'] ?? '')),
                 'status' => (string) $row['status'], 'days' => $days, 'severity' => (string) $row['severity'],
                 'type' => (string) $row['finding_type'], 'reference' => (string) $row['id'],
-                'guidance' => $row['finding_type'] === 'late_charges_require_review'
-                    ? (string) ($this->json($row['details_json'])['message'] ?? self::guidance('late_charges_require_review'))
+                // These findings record the guidance of the case they were opened for.
+                'guidance' => in_array($row['finding_type'], ['late_charges_require_review', 'boleto_issuance_requires_review', 'charge_issuance_refused'], true)
+                    ? (string) ($this->json($row['details_json'])['message'] ?? self::guidance((string) $row['finding_type']))
                     : self::guidance((string) $row['finding_type']), 'basis' => 'Valor de referência da pendência',
             ];
             if ($this->matches($filter, $record)) {
@@ -406,10 +408,17 @@ final class MerchantReadModel
             throw new \InvalidArgumentException('Informe a fatura que deseja consultar.');
         }
         $attempts = $this->query(
-            'SELECT id, invoice_id, client_id, method, status, amount_cents, currency, remote_id, created_at, updated_at '
+            'SELECT id, invoice_id, client_id, method, status, amount_cents, currency, remote_id, created_at, updated_at, response_json '
             . 'FROM pagou_payment_attempts WHERE invoice_id = ? ORDER BY created_at DESC, id DESC',
             [$invoice],
         );
+        foreach ($attempts as &$attempt) {
+            // Only the stable failure code leaves the read model, never the stored response.
+            $response = json_decode((string) ($attempt['response_json'] ?? ''), true);
+            $attempt['failure'] = is_array($response) && is_string($response['failure'] ?? null) ? $response['failure'] : '';
+            unset($attempt['response_json']);
+        }
+        unset($attempt);
         $ledger = $this->query(
             'SELECT idempotency_key, entry_type, amount_cents, currency, payment_at_utc, effective_at_utc, metadata_json '
             . 'FROM pagou_ledger_entries WHERE invoice_id = ? ORDER BY effective_at_utc DESC, id DESC',
@@ -507,6 +516,8 @@ final class MerchantReadModel
             'card_unknown_provider_status' => 'Consulte a situação do cartão na Pagou e o diagnóstico. Não presuma aprovação ou recusa diante de estado desconhecido.',
             'card_deletion_requires_review' => 'Confira se o cartão anterior ainda está salvo na Pagou antes de repetir a remoção.',
             'currency_mismatch' => 'Confira a moeda da fatura e da cobrança. Este módulo opera em reais.',
+            'boleto_issuance_requires_review' => 'Confira a cobrança na Pagou antes de gerar um novo boleto pelo card da fatura.',
+            'charge_issuance_refused' => 'Confira o motivo no histórico da fatura e o cadastro do cliente.',
             'pix_refund_requires_review', 'pix_refund_external_requires_review' => 'Confira a devolução na Pagou e a transação de reembolso na fatura do WHMCS. Não solicite outra devolução para este Pix.',
             default => 'Abra o detalhe, confira a cobrança e a fatura. Consulte o diagnóstico ou o suporte antes de repetir uma ação financeira.',
         };

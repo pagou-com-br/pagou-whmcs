@@ -862,9 +862,10 @@ final class OperationalReadModel
                 'active' => $active,
                 'visible' => $visible,
                 'state' => $active ? 'ready' : 'attention',
-                'detail' => !$active ? 'Ainda não ativado no WHMCS.' : ($visible
+                // A card that cannot be activated yet says why, beside its disabled button.
+                'detail' => !$active ? ($id === 'pagou_creditcard' ? $this->inactiveCardDetail() : 'Ainda não ativado no WHMCS.') : ($visible
                     ? 'Ativo e disponível para os clientes elegíveis.'
-                    : 'Ativo e oculto para teste controlado.'),
+                    : 'Ativo e oculto para teste controlado. Para oferecer aos clientes, abra Gateways de Pagamento nas configurações do WHMCS e marque "Show on Order Form" no gateway.'),
                 'url' => 'configgateways.php',
             ];
         }
@@ -1028,7 +1029,7 @@ final class OperationalReadModel
                 'Conexão técnica do cartão',
                 $cardReady ? 'ready' : 'attention',
                 $cardReady ? 'A instalação e a conexão técnica foram verificadas. A habilitação da conta é consultada separadamente no aplicativo Pagou.'
-                    : 'A instalação ou a configuração do cartão precisa de verificação. Execute o diagnóstico e, se o aviso continuar, contate o suporte Pagou.',
+                    : (string) $this->cardBlocker() . ' Se o aviso continuar depois de um novo diagnóstico, contate o suporte Pagou.',
                 'Ver cartão',
                 'addonmodules.php?module=pagou_payments&view=card',
                 false,
@@ -1085,9 +1086,34 @@ final class OperationalReadModel
 
     private function cardReady(): bool
     {
+        return $this->cardBlocker() === null;
+    }
+
+    private function inactiveCardDetail(): string
+    {
+        try {
+            return $this->cardBlocker() ?? 'Ainda não ativado no WHMCS.';
+        } catch (\Throwable) {
+            // An installation that cannot be checked keeps the plain state; the diagnostics say more.
+            return 'Ainda não ativado no WHMCS.';
+        }
+    }
+
+    /** Why the card cannot be activated yet, in words the merchant can act on, or null when it can. */
+    private function cardBlocker(): ?string
+    {
         $settings = (new CentralSettingsStore($this->pdo))->values();
-        return $this->cardInstalled() && $this->operationalSetting('diagnostics_card_state') === 'ready'
-            && $settings['card_max_installments'] === '1' && $settings['card_auto_capture'] === '1';
+        if ($settings['card_max_installments'] !== '1' || $settings['card_auto_capture'] !== '1') {
+            return 'Esta versão aceita cartão à vista com captura automática. Revise as configurações do cartão antes de continuar.';
+        }
+        if (!$this->cardInstalled()) {
+            return 'A instalação do fluxo seguro de cartão está incompleta. Atualize o addon Pagou.';
+        }
+        if ($this->operationalSetting('diagnostics_card_state') !== 'ready') {
+            return $this->operationalSetting('diagnostics_card_reason') ?? 'Execute o diagnóstico para verificar o cartão.';
+        }
+
+        return null;
     }
 
     private function cardInstalled(): bool

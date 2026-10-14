@@ -59,7 +59,10 @@
         }
         function inspect(payload) {
             var state = payload.state;
-            if (payload.operationIssue || ['failed', 'uncertain', 'unavailable'].indexOf(state) !== -1) {
+            if (state === 'failed' && payload.html && payload.html.indexOf('pagou-invoice-notice--failure') !== -1) {
+                // The card already says why the charge failed and what can be done.
+                finish(payload, '');
+            } else if (payload.operationIssue || ['failed', 'uncertain', 'unavailable'].indexOf(state) !== -1) {
                 finish(payload, 'A operação precisa de verificação. Consulte o diagnóstico do Pagou antes de tentar novamente.');
             } else if (state === 'paid' || state === 'refunded') {
                 finish(payload, 'O estado financeiro da cobrança mudou. Confira a situação atual antes de qualquer nova ação.');
