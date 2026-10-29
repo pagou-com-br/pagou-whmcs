@@ -9,7 +9,7 @@ use PDO;
 use RuntimeException;
 
 /** Additive indexes that can resume after MySQL implicitly commits part of a migration. */
-final class IndexMigration implements Migration
+final class IndexMigration implements ProceduralMigration
 {
     /** @param array<string, array{table:string, columns:list<string>}> $indexes */
     public function __construct(

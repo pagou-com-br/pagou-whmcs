@@ -43,13 +43,12 @@ final class AdminInvoiceEndpointTest extends TestCase
         self::assertStringContainsString('Gerar novo boleto', $response['body']['html']);
     }
 
-    public function testNativeRefundEndpointRequiresAllPermissionsAndCsrfAndNeverAcceptsInitiation(): void
+    public function testNativeRefundEndpointOnlyReadsAndRequiresAllPermissions(): void
     {
-        $base = ['permissions' => ['Manage Invoice', 'Refund Invoice Payments'], 'input' => ['action' => 'refresh']];
+        $base = ['permissions' => ['Manage Invoice', 'Refund Invoice Payments'], 'method' => 'GET'];
         foreach (
             [['permissions' => ['Manage Invoice']], ['module' => false], ['disabled' => true], ['anonymous' => true],
-            ['input' => ['action' => 'refresh', 'token' => 'invalid']], ['input' => ['action' => 'request']],
-            ['input' => ['action' => 'refresh', 'transaction_id' => 'invalid']]] as $override
+            ['query' => ['transaction_id' => 'invalid']], ['method' => 'POST'], ['method' => 'POST', 'input' => ['action' => 'refresh']]] as $override
         ) {
             $response = $this->request(array_replace($base, $override), 'native-refund.php');
             self::assertNotSame(200, $response['http']);
@@ -57,10 +56,8 @@ final class AdminInvoiceEndpointTest extends TestCase
         }
         $response = $this->request($base, 'native-refund.php');
         self::assertSame(200, $response['http']);
-        self::assertSame([['refresh' => 406689, 'account' => 22, 'action' => 'refresh']], $response['effects']);
-        $response = $this->request($base + ['method' => 'GET'], 'native-refund.php');
         self::assertSame([], $response['effects']);
-        self::assertTrue($response['body']['supported']);
+        self::assertSame(['status' => 'ok', 'supported' => true, 'refundStatus' => 'accepted', 'ready' => true, 'invoice' => 406689, 'account' => 22], $response['body']);
     }
 
     /** @param array<string,mixed> $scenario @return array<string,mixed> */

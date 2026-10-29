@@ -158,7 +158,8 @@ final class MerchantReadModel
     {
         return match (true) {
             $method === 'pix' && $status === 'applied', $method === 'card' && in_array($status, ['reversed', 'refunded'], true) => 'refund_done',
-            $method === 'pix' && in_array($status, ['confirmed', 'applying'], true) => 'refund_confirmed',
+            // Booked in WHMCS while the bank completes it ("applying") is still in progress for Pagou.
+            $method === 'pix' && $status === 'confirmed' => 'refund_confirmed',
             $status === 'review' => 'refund_review',
             in_array($status, ['rejected', 'failed'], true) => 'refund_rejected',
             default => 'refund_progress',
@@ -467,7 +468,7 @@ final class MerchantReadModel
             [$invoice],
         );
         $pixRefunds = $this->query(
-            'SELECT id, amount_cents, receipt_cents, status, requested_at, confirmed_at, updated_at, provider_refund_id '
+            'SELECT id, amount_cents, receipt_cents, status, requested_at, confirmed_at, native_dispatch_at, updated_at, provider_refund_id '
             . 'FROM pagou_pix_refunds WHERE invoice_id = ? ORDER BY requested_at DESC, id DESC',
             [$invoice],
         );

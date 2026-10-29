@@ -61,7 +61,7 @@ final class MigrationRunner
             if ($transactionalDdl) {
                 $this->pdo->beginTransaction();
             }
-            if ($migration instanceof IndexMigration) {
+            if ($migration instanceof ProceduralMigration) {
                 $migration->apply($this->pdo);
             } else {
                 foreach ($migration->statements($driver) as $sql) {

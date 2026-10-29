@@ -56,7 +56,7 @@ final class PdoPixRefundStore
     {
         if ($row['original_transaction_id'] !== $transactionId || (int) $row['amount_cents'] !== $amount) {
             // Completing a pending refund with another amount is the common mistake; say which amount applies.
-            $pending = $row['original_transaction_id'] === $transactionId && in_array($row['status'], ['requested', 'uncertain', 'confirmed'], true);
+            $pending = $row['original_transaction_id'] === $transactionId && in_array($row['status'], ['requested', 'uncertain', 'accepted', 'confirmed'], true);
             throw new \DomainException($pending
                 ? 'Este Pix já possui uma devolução de R$ ' . number_format((int) $row['amount_cents'] / 100, 2, ',', '.') . '. Informe esse valor para concluir o registro.'
                 : 'Este Pix já possui uma solicitação de reembolso. Confira o pedido existente.');
@@ -69,6 +69,13 @@ final class PdoPixRefundStore
         $query->execute([$status, $error, self::now(), $attemptId]);
     }
 
+    /** Pagou holds the refund and the bank completes it later; an unanswered request is accepted once it shows up. */
+    public function accept(string $attemptId, string $providerId): void
+    {
+        $query = $this->pdo->prepare("UPDATE pagou_pix_refunds SET provider_refund_id = ?, status = CASE WHEN status IN ('requested','uncertain') THEN 'accepted' ELSE status END, error_code = NULL, updated_at = ? WHERE attempt_id = ? AND status IN ('requested','uncertain','accepted','applying') AND (provider_refund_id IS NULL OR provider_refund_id = ?)");
+        $query->execute([$providerId, self::now(), $attemptId, $providerId]);
+    }
+
     public function confirm(string $attemptId, string $providerId): void
     {
         $query = $this->pdo->prepare("UPDATE pagou_pix_refunds SET provider_refund_id = ?, confirmed_at = COALESCE(confirmed_at, ?), status = CASE WHEN native_dispatch_at IS NULL THEN 'confirmed' ELSE status END, updated_at = ? WHERE attempt_id = ? AND status <> 'applied' AND (provider_refund_id IS NULL OR provider_refund_id = ?)");
@@ -78,7 +85,7 @@ final class PdoPixRefundStore
     /** An uncertain native write is recovered by reading the transaction, never by resending it. */
     public function claimNative(string $attemptId): bool
     {
-        $query = $this->pdo->prepare("UPDATE pagou_pix_refunds SET native_dispatch_at = ?, status = 'applying', updated_at = ? WHERE attempt_id = ? AND status = 'confirmed' AND native_dispatch_at IS NULL");
+        $query = $this->pdo->prepare("UPDATE pagou_pix_refunds SET native_dispatch_at = ?, status = 'applying', updated_at = ? WHERE attempt_id = ? AND status IN ('accepted','confirmed') AND native_dispatch_at IS NULL");
         $query->execute([self::now(), self::now(), $attemptId]);
         return $query->rowCount() === 1;
     }

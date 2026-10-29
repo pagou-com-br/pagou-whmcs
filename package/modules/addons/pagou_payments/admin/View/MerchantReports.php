@@ -225,11 +225,16 @@ final class MerchantReports
             }
         }
         $refunded = 0;
-        $pending = false;
+        $pending = '';
         foreach ($detail['pixRefunds'] ?? [] as $row) {
-            if (in_array((string) $row['status'], ['applied', 'confirmed', 'applying'], true)) {
+            $status = (string) $row['status'];
+            if (in_array($status, ['applied', 'applying', 'accepted', 'confirmed'], true)) {
                 $refunded += (int) $row['amount_cents'];
-                $pending = $pending || (string) $row['status'] !== 'applied';
+                $pending = match (true) {
+                    in_array($status, ['accepted', 'confirmed'], true) => ', registro pendente no WHMCS',
+                    $status === 'applying' && $pending === '' => ', aguardando a conclusão no banco',
+                    default => $pending,
+                };
             }
         }
         foreach ($detail['refunds'] ?? [] as $row) {
@@ -241,7 +246,7 @@ final class MerchantReports
             ['Valor da fatura', $total === null ? 'Indisponível' : F::money($total), 'Total atual no WHMCS', ''],
             ['Recebido', F::money($received), $last !== '' ? 'Último em ' . F::date($last) : 'Nenhum recebimento confirmado', $received > 0 ? 'success' : ''],
             ['Devolvido', F::money($refunded), $refunded === 0 ? 'Nenhuma devolução'
-                : ($refunded >= $received ? 'Devolução total' : 'Devolução parcial') . ($pending ? ', registro pendente no WHMCS' : ''), $refunded > 0 ? 'warning' : ''],
+                : ($refunded >= $received ? 'Devolução total' : 'Devolução parcial') . $pending, $refunded > 0 ? 'warning' : ''],
         ];
         $html = '<dl class="pagou-charge-figures">';
         foreach ($tiles as [$label, $value, $detailText, $tone]) {
@@ -409,11 +414,14 @@ final class MerchantReports
             $add((string) $row['requested_at'], 'Devolução Pix solicitada', $amount . '.', 'info', 'refresh');
             $add($row['confirmed_at'] ?? null, 'Devolução Pix confirmada pela Pagou', $amount . '.', 'success', 'refresh');
             $status = (string) $row['status'];
-            if (in_array($status, ['applied', 'review', 'rejected', 'uncertain'], true)) {
+            // WHMCS books the refund when the Refund form is answered, usually before the bank completes it.
+            if (in_array($status, ['applying', 'applied'], true)) {
+                $add((string) ($row['native_dispatch_at'] ?? $row['updated_at']), 'Devolução registrada no WHMCS', $amount . '.', 'success', 'refresh');
+            }
+            if (in_array($status, ['review', 'rejected', 'uncertain'], true)) {
                 $add((string) $row['updated_at'], match ($status) {
-                    'applied' => 'Devolução registrada no WHMCS', 'review' => 'Devolução em conferência',
-                    'rejected' => 'Devolução não aceita pela Pagou', default => 'Resultado da devolução incerto',
-                }, $status === 'applied' ? $amount . '.' : 'Não solicite outra devolução antes de conferir.', $status === 'applied' ? 'success' : ($status === 'rejected' ? 'danger' : 'warning'), 'refresh');
+                    'review' => 'Devolução em conferência', 'rejected' => 'Devolução não aceita pela Pagou', default => 'Resultado da devolução incerto',
+                }, 'Não solicite outra devolução antes de conferir.', $status === 'rejected' ? 'danger' : 'warning', 'refresh');
             }
         }
         foreach ($detail['refunds'] ?? [] as $row) {
@@ -451,7 +459,8 @@ final class MerchantReports
     private static function pixRefundLabel(string $status): string
     {
         return match ($status) {
-            'applied' => 'Registrada no WHMCS', 'confirmed', 'applying' => 'Confirmada, registro pendente no WHMCS',
+            'applied' => 'Registrada no WHMCS', 'applying' => 'Registrada no WHMCS, aguardando o banco',
+            'accepted' => 'Aceita, registro pendente no WHMCS', 'confirmed' => 'Confirmada, registro pendente no WHMCS',
             'review' => 'Em conferência', 'rejected' => 'Não aceita', 'uncertain' => 'Resultado incerto', default => 'Em andamento',
         };
     }

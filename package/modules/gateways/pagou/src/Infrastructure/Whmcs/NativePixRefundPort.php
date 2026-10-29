@@ -37,11 +37,12 @@ final class NativePixRefundPort
         return Money::fromDecimal((string) $rows[0]['amountin'])->centavos();
     }
 
-    /** @param array<string,mixed> $refund */
+    /** WHMCS books the refund under the Pagou refund identity, or the local one while Pagou had not exposed it.
+     * @param array<string,mixed> $refund */
     public function exists(array $refund): bool
     {
-        $query = $this->pdo->prepare('SELECT invoiceid, userid, gateway, amountin, amountout FROM tblaccounts WHERE transid = ?');
-        $query->execute([$refund['provider_refund_id']]);
+        $query = $this->pdo->prepare('SELECT invoiceid, userid, gateway, amountin, amountout FROM tblaccounts WHERE transid IN (?, ?)');
+        $query->execute([$refund['id'], (string) ($refund['provider_refund_id'] ?? '') !== '' ? $refund['provider_refund_id'] : $refund['id']]);
         $rows = $query->fetchAll(PDO::FETCH_ASSOC);
         if ($rows === []) {
             return false;

@@ -50,7 +50,7 @@ final class PixRefundRuntimeTest extends TestCase
     public function testAcceptedRequestDoesNotCreateOutflowAndFinalConfirmationIsAppliedOnce(): void
     {
         $this->runtime->request(19, 'original-receipt', 1200, 1);
-        self::assertSame('requested', $this->row()['status']);
+        self::assertSame('accepted', $this->row()['status']);
         self::assertSame('refund_pending', (new ClientPaymentStatus($this->pdo))->display(19, 'pix')['state']);
         self::assertSame('pending', $this->runtime->reconcile($this->attempt, $this->charge(1200, 2)));
         self::assertSame(0, $this->nativeWrites);
@@ -118,6 +118,20 @@ final class PixRefundRuntimeTest extends TestCase
         $this->runtime->request(19, 'original-receipt', 400, 1);
     }
 
+    public function testUnansweredRequestIsBookedOnceTheRefundShowsUpAtPagou(): void
+    {
+        $this->remoteError = new PixApiException('Synthetic gateway timeout', 504);
+        $this->runtime->request(19, 'original-receipt', 1200, 1);
+        $declined = $this->runtime->authorizeNative($this->attempt);
+        self::assertSame('declined', $declined['status']);
+        self::assertStringContainsString('nada é devolvido duas vezes', $declined['declinereason']);
+        self::assertSame('pending', $this->runtime->reconcile($this->attempt, $this->charge(1200, 2)));
+        self::assertSame('accepted', $this->row()['status']);
+        $this->runtime->request(19, 'original-receipt', 1200, 1);
+        self::assertSame('success', $this->runtime->authorizeNative($this->attempt)['status']);
+        self::assertSame(1, $this->sent);
+    }
+
     public function testLostRemoteResponseAndServerErrorsNeverResend(): void
     {
         $this->remoteError = new PixApiException('Synthetic unavailable response', 503);
@@ -153,17 +167,52 @@ final class PixRefundRuntimeTest extends TestCase
         self::assertSame(0, $this->nativeWrites);
     }
 
-    public function testNativeCallbackSuccessIsIssuedOnlyOnceAfterRemoteConfirmation(): void
+    public function testFirstRefundClickIsBookedOnceAsSoonAsPagouAcceptsIt(): void
     {
         $this->runtime->request(19, 'original-receipt', 1200, 1);
-        self::assertSame('declined', $this->runtime->authorizeNative($this->attempt)['status']);
-        self::assertSame('pending', $this->runtime->reconcile($this->attempt, $this->charge(1200)));
-        self::assertSame('confirmed', $this->row()['status']);
-        self::assertSame(0, $this->nativeWrites);
+        // Pagou exposes the refund it sent to the bank before the bank completes it.
+        self::assertSame('pending', $this->runtime->reconcile($this->attempt, $this->charge(1200, 2)));
         $result = $this->runtime->authorizeNative($this->attempt);
         self::assertSame('success', $result['status']);
         self::assertSame('bank-refund', $result['transid']);
+        self::assertSame('refund_accepted', $result['rawdata']['result']);
         self::assertSame('declined', $this->runtime->authorizeNative($this->attempt)['status']);
+        $this->insertNative(1200, $result['transid']);
+        // WHMCS has booked it; the module ledger waits for the bank.
+        self::assertSame([], $this->runtime->confirmNative(19));
+        self::assertSame('applying', $this->row()['status']);
+        self::assertSame('pending', $this->runtime->reconcile($this->attempt, $this->charge(1200, 2)));
+        self::assertSame(0, (int) $this->pdo->query("SELECT COUNT(*) FROM pagou_ledger_entries WHERE entry_type = 'refunded_payment'")->fetchColumn());
+        self::assertSame('applied', $this->runtime->reconcile($this->attempt, $this->charge(1200)));
+        self::assertSame(1, (int) $this->pdo->query("SELECT COUNT(*) FROM pagou_ledger_entries WHERE entry_type = 'refunded_payment'")->fetchColumn());
+        self::assertSame('declined', $this->runtime->authorizeNative($this->attempt)['status']);
+        self::assertSame(1, $this->nativeWrites);
+        self::assertSame(1, $this->sent);
+    }
+
+    public function testRefundBookedBeforePagouExposesItIsMatchedByTheLocalIdentity(): void
+    {
+        $this->runtime->request(19, 'original-receipt', 400, 1);
+        $result = $this->runtime->authorizeNative($this->attempt);
+        self::assertSame('success', $result['status']);
+        self::assertSame($this->row()['id'], $result['transid']);
+        self::assertSame('0.00', $result['fees']);
+        $this->insertNative(400, $result['transid']);
+        self::assertSame('pending', $this->runtime->reconcile($this->attempt, $this->charge(400, 2)));
+        self::assertSame('bank-refund', $this->row()['provider_refund_id']);
+        self::assertSame('applied', $this->runtime->reconcile($this->attempt, $this->charge(400)));
+        self::assertSame(1, $this->nativeWrites);
+    }
+
+    public function testConfirmedRefundIsStillBookedByTheRefundForm(): void
+    {
+        $this->remoteError = new PixApiException('Synthetic unavailable response', 503);
+        $this->runtime->request(19, 'original-receipt', 1200, 1);
+        self::assertSame('pending', $this->runtime->reconcile($this->attempt, $this->charge(1200)));
+        self::assertSame('confirmed', $this->row()['status']);
+        $result = $this->runtime->authorizeNative($this->attempt);
+        self::assertSame('success', $result['status']);
+        self::assertSame('refund_confirmed', $result['rawdata']['result']);
         // A lost native response is recovered by observing WHMCS's transaction.
         $this->insertNative(1200, $result['transid']);
         self::assertSame('applied', $this->runtime->reconcile($this->attempt, $this->charge(1200)));
@@ -221,13 +270,13 @@ final class PixRefundRuntimeTest extends TestCase
         $worker->refreshPixRefund(19);
         self::assertSame('confirmed', $this->row()['status']);
         self::assertSame(0, $this->nativeWrites);
-        self::assertSame(['supported' => true, 'refundStatus' => 'confirmed', 'ready' => true, 'amount' => '4.00', 'amountLabel' => 'R$ 4,00'], $worker->nativePixRefund(19, 1, 'read'));
+        self::assertSame(['supported' => true, 'refundStatus' => 'confirmed', 'ready' => true, 'amount' => '4.00', 'amountLabel' => 'R$ 4,00'], $worker->nativePixRefund(19, 1));
         // A blank Refund amount means the full receipt in WHMCS; the pending partial refund is declined with its amount.
         $declined = $worker->refundPix(19, 'original-receipt', 1000, 1);
         self::assertSame('declined', $declined['status']);
         self::assertSame('Este Pix já possui uma devolução de R$ 4,00. Informe esse valor para concluir o registro.', $declined['declinereason']);
         self::assertSame('confirmed', $this->row()['status']);
-        self::assertSame(['supported' => false], $worker->nativePixRefund(20, 1, 'read'));
+        self::assertSame(['supported' => false], $worker->nativePixRefund(20, 1));
         $result = $worker->refundPix(19, 'original-receipt', 400, 1);
         self::assertSame('success', $result['status']);
         $this->insertNative(400, $result['transid']);
@@ -240,13 +289,32 @@ final class PixRefundRuntimeTest extends TestCase
         self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM pagou_payment_attempts a WHERE ' . PeriodicReconciliation::eligibleSql())->fetchColumn());
     }
 
+    public function testRefundFormClickBooksWhatPagouAlreadyAccepted(): void
+    {
+        $this->runtime->request(19, 'original-receipt', 1200, 1);
+        $worker = new WhmcsRuntime($this->pdo, new AddonSettings(['worker_max_jobs' => '1']), new PdoOperationOutbox($this->pdo), static function (): array {
+            throw new \LogicException('The module must never replace the native refund through AddTransaction or UpdateInvoice.');
+        }, fn () => $this->charge(1200, 2));
+        self::assertSame(['supported' => true, 'refundStatus' => 'accepted', 'ready' => true, 'amount' => '12.00', 'amountLabel' => 'R$ 12,00'], $worker->nativePixRefund(19, 1));
+        $result = $worker->refundPix(19, 'original-receipt', 1200, 1);
+        self::assertSame('success', $result['status']);
+        self::assertSame('bank-refund', $result['transid']);
+        self::assertSame(1, $this->sent);
+        $this->insertNative(1200, $result['transid']);
+        $worker->confirmNativePixRefunds(19);
+        self::assertSame('applying', $this->row()['status']);
+        self::assertSame(['supported' => true, 'refundStatus' => 'applying', 'ready' => false, 'amount' => '12.00', 'amountLabel' => 'R$ 12,00'], $worker->nativePixRefund(19, 1));
+        self::assertSame('declined', $worker->refundPix(19, 'original-receipt', 1200, 1)['status']);
+        self::assertSame(1, $this->nativeWrites);
+    }
+
     public function testRefundViewOnlyExposesTheRecordedRefundStatus(): void
     {
         $attempt = (new PaymentAttemptStore($this->pdo))->find($this->attempt);
         $view = new PixRefundView($this->pdo);
         self::assertSame([], $view->forAttempt($attempt));
         $this->runtime->request(19, 'original-receipt', 400, 1);
-        self::assertSame('requested', $view->forAttempt($attempt)['status']);
+        self::assertSame('accepted', $view->forAttempt($attempt)['status']);
         self::assertArrayNotHasKey('transactionId', $view->forAttempt($attempt));
     }
 

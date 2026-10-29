@@ -24,7 +24,7 @@ final class PeriodicReconciliation
             . "AND (a.status IN ('queued', 'pending', 'ready', 'awaiting_registration', 'uncertain') "
             . "OR (a.status = 'paid' AND EXISTS (SELECT 1 FROM pagou_reconciliation_findings f "
             . "WHERE f.attempt_id = a.id AND f.status = 'open' AND f.finding_type = 'payment_evidence_missing')) "
-            . "OR EXISTS (SELECT 1 FROM pagou_pix_refunds r WHERE r.attempt_id = a.id AND r.status IN ('requested','uncertain','confirmed','applying')))";
+            . "OR EXISTS (SELECT 1 FROM pagou_pix_refunds r WHERE r.attempt_id = a.id AND r.status IN ('requested','uncertain','accepted','confirmed','applying')))";
     }
 
     public function schedule(int $limit = 10, ?\DateTimeImmutable $now = null): int

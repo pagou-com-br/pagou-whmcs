@@ -2,6 +2,19 @@
 
 Este histórico descreve as versões da distribuição pública do Pagou para WHMCS.
 
+## 0.3.0-rc.3 (2026-10-29)
+
+Terceira candidata da distribuição pública. Conclui a correção do cron
+diário do WHMCS sobre Pix e boleto e simplifica o reembolso de Pix.
+
+- Corrige o tipo do Pix e do boleto que o WHMCS gravou na ativação. A
+  mudança da 0.3.0-rc.2 não alterava esse registro, e o cron diário seguia
+  tentando cobrar como cartão cada fatura em aberto nesses meios, com o
+  e-mail "Credit Card Payment Due". A correção é aplicada sozinha depois
+  da atualização e fica registrada no log de atividades.
+- Registra o reembolso de Pix no primeiro envio da aba Refund, assim que a
+  Pagou aceita o pedido, sem "Refund Declined" e sem um segundo envio.
+
 ## 0.3.0-rc.2 (2026-10-14)
 
 Segunda candidata da distribuição pública. Corrige a emissão e o

@@ -22,4 +22,5 @@ return [
     require __DIR__ . '/migrations/015_create_payment_parties.php',
     require __DIR__ . '/migrations/016_create_pix_refunds.php',
     require __DIR__ . '/migrations/017_create_customer_notices.php',
+    require __DIR__ . '/migrations/018_fix_pix_and_boleto_gateway_type.php',
 ];

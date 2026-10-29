@@ -793,9 +793,9 @@ final class WhmcsRuntime
         return $this->pixRefunds()->authorizeNative((string) $attempt['id']);
     }
 
-    /** Preparation for the existing WHMCS Refund form. Native options remain in that form.
+    /** What the existing WHMCS Refund form should know about the selected Pix, read only. Native options remain in that form.
      * @return array<string,mixed> */
-    public function nativePixRefund(int $invoiceId, int $accountId, string $action): array
+    public function nativePixRefund(int $invoiceId, int $accountId): array
     {
         $native = new \Pagou\Whmcs\Infrastructure\Whmcs\NativePixRefundPort($this->pdo);
         $receipt = $native->receipt($invoiceId, $accountId);
@@ -805,14 +805,9 @@ final class WhmcsRuntime
         $transactionId = (string) $receipt['transid'];
         $attempt = (new \Pagou\Whmcs\Payment\Ledger\Infrastructure\PaymentTransactionResolver($this->pdo))->resolve($invoiceId, $transactionId, 'pix');
         $native->originalAmount($invoiceId, $transactionId, (int) $attempt['client_id']);
-        if ($action === 'refresh') {
-            $this->refreshPixRefund($invoiceId, (string) $attempt['id']);
-        } elseif ($action !== 'read') {
-            throw new \InvalidArgumentException('Ação inválida.');
-        }
         $row = (new \Pagou\Whmcs\Payment\Pix\Infrastructure\PdoPixRefundStore($this->pdo))->find((string) $attempt['id']);
         $result = ['supported' => true, 'refundStatus' => $row['status'] ?? 'available',
-            'ready' => ($row['status'] ?? '') === 'confirmed' && empty($row['native_dispatch_at'])];
+            'ready' => in_array($row['status'] ?? '', ['accepted', 'confirmed'], true) && empty($row['native_dispatch_at'])];
         if ($row !== null) {
             // The Refund form must carry the requested amount; WHMCS would otherwise default to the full receipt.
             $cents = (int) $row['amount_cents'];

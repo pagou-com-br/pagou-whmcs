@@ -2,7 +2,7 @@
   "schema_version": 1,
   "name": "pagou-whmcs",
   "display_name": "Pagou para WHMCS",
-  "version": "0.3.0-rc.2",
+  "version": "0.3.0-rc.3",
   "license": "MIT",
   "php": ">=8.1",
   "whmcs": ">=8.6 <9.0",

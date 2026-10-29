@@ -50,12 +50,9 @@ namespace Pagou\Whmcs\Application\Runtime {
                     $GLOBALS['effects'][] = ['invoice' => $id, 'replace' => $replace];
                 }
 
-                public function nativePixRefund(int $invoice, int $account, string $action): array
+                public function nativePixRefund(int $invoice, int $account): array
                 {
-                    if ($action !== 'read') {
-                        $GLOBALS['effects'][] = ['refresh' => $invoice, 'account' => $account, 'action' => $action];
-                    }
-                    return ['supported' => true, 'refundStatus' => 'requested', 'ready' => false];
+                    return ['supported' => true, 'refundStatus' => 'accepted', 'ready' => true, 'invoice' => $invoice, 'account' => $account];
                 }
 
                 public function advanceInvoice(int $id): object
@@ -75,7 +72,7 @@ namespace {
     $_SERVER['REQUEST_METHOD'] = $GLOBALS['scenario']['method'] ?? 'POST';
     $_POST = ['transaction_id' => '22', 'invoice_id' => '406689', 'token' => 'fixture-token', 'action' => 'replace-boleto', 'expected_attempt' => 'current'];
     $_POST = array_replace($_POST, $GLOBALS['scenario']['input'] ?? []);
-    $_GET = ['invoice_id' => '406689', 'transaction_id' => '22'];
+    $_GET = array_replace(['invoice_id' => '406689', 'transaction_id' => '22'], $GLOBALS['scenario']['query'] ?? []);
     ob_start();
     register_shutdown_function(static function (): void {
         $body = ob_get_clean();

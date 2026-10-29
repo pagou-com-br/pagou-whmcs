@@ -5,7 +5,6 @@ declare(strict_types=1);
 require_once dirname(__DIR__, 3) . '/init.php';
 require_once dirname(__DIR__, 2) . '/gateways/pagou/bootstrap.php';
 
-use Pagou\Payments\Admin\Security\Csrf;
 use Pagou\Whmcs\Application\Runtime\RuntimeFactory;
 
 header('Content-Type: application/json; charset=utf-8');
@@ -22,27 +21,18 @@ try {
         echo '{"status":"forbidden","message":"Seu perfil não possui acesso a reembolsos do Pagou."}';
         exit;
     }
-    $method = $_SERVER['REQUEST_METHOD'] ?? '';
-    if (!in_array($method, ['GET', 'POST'], true)) {
+    // Read only: the refund itself is always sent by the native WHMCS Refund form.
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
         http_response_code(405);
         echo '{"status":"invalid_method"}';
         exit;
     }
-    $input = $method === 'POST' ? $_POST : $_GET;
-    $invoice = filter_var($input['invoice_id'] ?? null, FILTER_VALIDATE_INT);
-    $account = filter_var($input['transaction_id'] ?? null, FILTER_VALIDATE_INT);
+    $invoice = filter_var($_GET['invoice_id'] ?? null, FILTER_VALIDATE_INT);
+    $account = filter_var($_GET['transaction_id'] ?? null, FILTER_VALIDATE_INT);
     if (!is_int($invoice) || $invoice < 1 || !is_int($account) || $account < 1) {
         throw new InvalidArgumentException('Fatura ou transação inválida.');
     }
-    $action = 'read';
-    if ($method === 'POST') {
-        (new Csrf())->assertValid(is_string($input['token'] ?? null) ? $input['token'] : null);
-        $action = is_string($input['action'] ?? null) ? $input['action'] : '';
-        if ($action !== 'refresh') {
-            throw new InvalidArgumentException('Ação inválida.');
-        }
-    }
-    $result = RuntimeFactory::runtime()->nativePixRefund($invoice, $account, $action);
+    $result = RuntimeFactory::runtime()->nativePixRefund($invoice, $account);
     echo json_encode(['status' => 'ok'] + $result, JSON_THROW_ON_ERROR);
 } catch (Throwable $error) {
     http_response_code(400);

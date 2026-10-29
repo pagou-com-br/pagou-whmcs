@@ -53,12 +53,13 @@ final class InvoiceControls
         if (isset($refund['state']) && ($refund['status'] ?? '') !== 'rejected') {
             $stateLabel = match ($refund['status']) {
                 'applied' => !empty($refund['partial']) ? 'Reembolso parcial confirmado' : 'Reembolso confirmado',
-                'confirmed' => 'Registro do reembolso pendente',
+                'applying' => !empty($refund['partial']) ? 'Reembolso parcial registrado' : 'Reembolso registrado',
+                'accepted', 'confirmed' => 'Registro do reembolso pendente',
                 'review' => 'Reembolso em conferência',
                 default => 'Reembolso em processamento',
             };
             $stateTone = match ($refund['status']) {
-                'applied' => 'success',
+                'applied', 'applying' => 'success',
                 'review' => 'danger',
                 default => 'warning',
             };
@@ -147,7 +148,8 @@ final class InvoiceControls
         $kind = !empty($refund['partial']) ? 'Reembolso parcial' : 'Reembolso total';
         [$title, $detail, $tone] = match ($status) {
             'applied' => [$kind, 'Devolvido ao pagador e registrado no WHMCS.', 'success'],
-            'confirmed' => ['Devolução confirmada pela Pagou', 'Conclua o registro pela aba Refund com esta transação. O valor da devolução é preenchido automaticamente.', 'warning'],
+            'applying' => [$kind, 'Registrado no WHMCS. O banco conclui a devolução ao pagador em alguns minutos.', 'success'],
+            'accepted', 'confirmed' => ['Devolução aceita pela Pagou', 'Conclua o registro pela aba Refund com esta transação. O valor da devolução é preenchido automaticamente.', 'warning'],
             'review' => ['Devolução em conferência', 'Contate o suporte. Não repita o pedido.', 'danger'],
             'rejected' => ['Devolução não aceita', 'Confira a situação com o suporte antes de solicitar outra.', 'danger'],
             default => ['Devolução em processamento', 'Aguardando a confirmação da Pagou.', 'info'],

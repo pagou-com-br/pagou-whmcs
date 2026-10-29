@@ -15,7 +15,10 @@ use Pagou\Whmcs\Payment\Pix\Exception\PixApiException;
 use Pagou\Whmcs\Payment\Pix\Infrastructure\PdoPixRefundStore;
 use Pagou\Whmcs\Support\Uuid;
 
-/** Request once, then reconcile only the exact refund exposed by the public Pix API. */
+/**
+ * Request once and let WHMCS book the refund as soon as Pagou holds it; the bank completion
+ * is reconciled afterwards against the exact refund exposed by the public Pix API.
+ */
 final class PixRefundRuntime
 {
     private readonly Closure $send;
@@ -62,6 +65,8 @@ final class PixRefundRuntime
                 new \Pagou\Whmcs\Payment\Pix\Value\Money($amount),
                 'Reembolso solicitado na fatura WHMCS ' . $invoiceId
             ));
+            // A successful answer means Pagou has already sent the refund to the bank.
+            $this->store->mark((string) $row['attempt_id'], 'accepted');
         } catch (PixApiException $error) {
             $uncertain = $error->status < 400 || $error->status >= 500 || in_array($error->status, [408, 429], true);
             $this->store->mark((string) $row['attempt_id'], $uncertain ? 'uncertain' : 'rejected', $uncertain ? 'remote_outcome_unknown' : 'request_rejected');
@@ -76,8 +81,10 @@ final class PixRefundRuntime
     public function authorizeNative(string $attemptId): array
     {
         $row = $this->store->find($attemptId);
-        if ($row !== null && $row['status'] === 'confirmed' && $this->store->claimNative($attemptId)) {
-            $result = ['status' => 'success', 'transid' => $row['provider_refund_id'], 'rawdata' => ['result' => 'refund_confirmed']];
+        if ($row !== null && in_array($row['status'], ['accepted', 'confirmed'], true) && $this->store->claimNative($attemptId)) {
+            // The local identity stands in until Pagou exposes the refund; the native outflow is matched by either.
+            $transaction = (string) ($row['provider_refund_id'] ?? '') !== '' ? $row['provider_refund_id'] : $row['id'];
+            $result = ['status' => 'success', 'transid' => $transaction, 'rawdata' => ['result' => 'refund_' . $row['status']]];
             // Pagou gives the fee back only on a total refund; WHMCS would otherwise reverse it on a partial one.
             if ((int) $row['amount_cents'] < (int) $row['receipt_cents']) {
                 $result['fees'] = '0.00';
@@ -86,19 +93,19 @@ final class PixRefundRuntime
             return $result;
         }
         $reason = match ($row['status'] ?? '') {
-            'applied' => 'Este reembolso já foi registrado. Atualize a fatura.',
+            'applied', 'applying' => 'Este reembolso já foi registrado. Atualize a fatura.',
             'rejected' => 'A solicitação não foi aceita pela Pagou. Confira a situação com o suporte.',
-            'review', 'applying' => 'O registro deste reembolso precisa de conferência. Não solicite outra devolução.',
-            default => 'A devolução está em processamento na Pagou. Aguarde a confirmação e conclua pela aba Refund. O pedido existente será reutilizado.',
+            'review' => 'O registro deste reembolso precisa de conferência. Não solicite outra devolução.',
+            default => 'A Pagou não confirmou o recebimento do pedido de devolução. Envie de novo pela aba Refund em alguns minutos: o mesmo pedido é conferido e nada é devolvido duas vezes.',
         };
         return ['status' => 'declined', 'declinereason' => $reason, 'rawdata' => ['result' => 'refund_pending_or_review']];
     }
 
-    /** Record only an exact native outflow after WHMCS has processed its own refund.
+    /** Record only an exact native outflow of a refund the bank completed, after WHMCS has processed its own refund.
      * @return list<array<string,mixed>> */
     public function confirmNative(int $invoiceId): array
     {
-        $query = $this->pdo->prepare("SELECT * FROM pagou_pix_refunds WHERE invoice_id = ? AND provider_refund_id IS NOT NULL AND status IN ('confirmed','applying','review')");
+        $query = $this->pdo->prepare("SELECT * FROM pagou_pix_refunds WHERE invoice_id = ? AND provider_refund_id IS NOT NULL AND confirmed_at IS NOT NULL AND status IN ('confirmed','applying','review')");
         $query->execute([$invoiceId]);
         $applied = [];
         foreach ($query->fetchAll(PDO::FETCH_ASSOC) as $row) {
@@ -166,15 +173,17 @@ final class PixRefundRuntime
             if (!is_scalar($amount) || Money::fromDecimal((string) $amount)->centavos() !== (int) $row['amount_cents']) {
                 throw new \DomainException('refund_amount_mismatch');
             }
-            // Status 3 is the completed refund, status 2 is only an accepted request.
+            $identified = is_string($providerId) && trim($providerId) !== '' && strlen($providerId) <= 128
+                && $providerId !== $row['original_transaction_id']
+                && (empty($row['provider_refund_id']) || $providerId === $row['provider_refund_id']);
+            // Status 3 is the completed refund, status 2 is the request Pagou sent to the bank.
             if ((string) ($refund['status'] ?? '') !== '3') {
+                if ($identified && in_array($row['status'], ['requested', 'uncertain', 'accepted', 'applying'], true)) {
+                    $this->store->accept($attemptId, $providerId);
+                }
                 return 'pending';
             }
-            if (
-                $charge->status !== 'refunded' || !is_string($providerId) || trim($providerId) === ''
-                || strlen($providerId) > 128 || $providerId === $row['original_transaction_id']
-                || (!empty($row['provider_refund_id']) && $providerId !== $row['provider_refund_id'])
-            ) {
+            if ($charge->status !== 'refunded' || !$identified) {
                 throw new \DomainException('refund_identity_mismatch');
             }
             $this->store->confirm($attemptId, $providerId);
