@@ -694,7 +694,7 @@ final class OperationalReadModel
                 'credential',
                 'Conectar a conta Pagou',
                 $credentialReady
-                    ? 'Última consulta segura aprovada em ' . $this->displayTime($this->operationalSetting('diagnostics_api_checked_utc')) . '.'
+                    ? 'Última consulta segura aprovada em ' . $this->displayTime($this->lastApiSuccess()) . '.'
                     : 'Informe a credencial única e valide a conexão com a Pagou.',
                 $credentialReady,
                 'Configurar credencial',
@@ -982,7 +982,7 @@ final class OperationalReadModel
         $timezone = $this->timezoneStatus();
         $credentialConfigured = $this->credentialConfigured();
         $apiState = $this->operationalSetting('diagnostics_api_state');
-        $apiChecked = $this->operationalSetting('diagnostics_api_checked_utc');
+        $apiChecked = $this->lastApiSuccess();
         $migrationCount = $this->safeCount('SELECT COUNT(*) FROM pagou_schema_migrations');
         $expectedMigrations = $this->expectedMigrations();
         $databaseReady = $migrationCount !== null;
@@ -1292,6 +1292,21 @@ final class OperationalReadModel
     private function workerHeartbeat(): ?string
     {
         return $this->operationalSetting('worker_last_run_utc');
+    }
+
+    /**
+     * The last authenticated read Pagou answered: the diagnostics check, or any payment check
+     * since then. Checks closed by housekeeping never reached Pagou and are left out.
+     */
+    private function lastApiSuccess(): ?string
+    {
+        $checked = $this->operationalSetting('diagnostics_api_checked_utc');
+        $lookup = $this->scalar(
+            "SELECT MAX(COALESCE(finished_at, updated_at)) FROM pagou_payment_operations WHERE operation_type LIKE 'reconcile%' "
+            . "AND status = 'succeeded' AND COALESCE(error_message, '') <> 'settled_by_charge_state'"
+        );
+
+        return $checked === null || ($lookup !== null && $lookup > $checked) ? ($lookup ?? $checked) : $checked;
     }
 
     private function operationalSetting(string $key): ?string

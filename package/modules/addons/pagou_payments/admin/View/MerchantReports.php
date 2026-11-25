@@ -61,7 +61,7 @@ final class MerchantReports
             'receipts' => [
                 ['label' => 'Recebido no período', 'value' => F::money($summary['amount']), 'detail' => $summary['count'] . ' recebimento(s) conciliado(s)', 'tone' => 'success'],
                 ['label' => 'Média por recebimento', 'value' => $summary['average'] === null ? 'Sem recebimentos' : F::money($summary['average']), 'detail' => 'Valor bruto dividido pelo número de recebimentos'],
-                ['label' => 'Período anterior', 'value' => F::money($report['previous']['amount']), 'detail' => $this->comparison($summary['amount'], $report['previous']['amount'])],
+                ['label' => 'Período anterior', 'value' => F::money($report['previous']['amount']), 'detail' => $this->comparison($summary['amount'], $report['previous']['amount'], $report['firstReceiptAt'] ?? null, $report['previousStart'] ?? null)],
             ],
             'open' => [
                 ['label' => 'Saldo em aberto agora', 'value' => F::money($summary['amount']), 'detail' => $summary['count'] . ' fatura(s), sem duplicação'],
@@ -390,7 +390,8 @@ final class MerchantReports
         foreach ($detail['operations'] ?? [] as $row) {
             $status = F::label((string) $row['status']);
             $runs = (int) $row['attempts'];
-            $why = in_array((string) $row['status'], ['failed', 'uncertain'], true) || (string) ($row['error_message'] ?? '') === 'settled_by_charge_state'
+            $why = in_array((string) $row['status'], ['failed', 'uncertain'], true)
+                || ((string) $row['status'] === 'succeeded' && in_array((string) ($row['error_message'] ?? ''), \Pagou\Whmcs\Presentation\OperationDetails::NOTES, true))
                 ? \Pagou\Whmcs\Presentation\OperationDetails::reason((string) ($row['error_message'] ?? '')) : null;
             $add((string) $row['updated_at'], F::label((string) $row['operation_type']), $status . ($runs > 1 ? ', após ' . $runs . ' execuções' : '') . '.' . ($why !== null ? ' ' . $why . '.' : ''), Page::tone($status), 'activity');
         }
@@ -673,8 +674,11 @@ final class MerchantReports
         ];
     }
 
-    private function comparison(int $current, int $previous): string
+    private function comparison(int $current, int $previous, mixed $firstReceipt = null, mixed $previousStart = null): string
     {
+        if (is_string($firstReceipt) && is_string($previousStart) && $firstReceipt > $previousStart) {
+            return 'Sem base para comparação percentual: o intervalo anterior começa antes do primeiro recebimento do módulo, em ' . F::date($firstReceipt);
+        }
         if ($previous <= 0) {
             return 'Sem base para comparação percentual';
         }

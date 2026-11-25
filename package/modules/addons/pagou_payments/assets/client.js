@@ -42,17 +42,21 @@
         }
         return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2}).*/, '$1.$2.$3/$4-$5');
     };
+    // A boleto refused for the CEP asks for it the same way.
+    var postcodeMask = function (value) {
+        return value.replace(/\D+/g, '').slice(0, 8).replace(/^(\d{5})(\d)/, '$1-$2');
+    };
     document.addEventListener('input', function (event) {
         var input = event.target;
-        if (input instanceof HTMLInputElement && input.name === 'document' && input.closest('[data-pagou-document-form]')) {
-            input.value = documentMask(input.value);
-        }
+        if (!(input instanceof HTMLInputElement) || !input.closest('[data-pagou-document-form]')) return;
+        if (input.name === 'document') input.value = documentMask(input.value);
+        if (input.name === 'postcode') input.value = postcodeMask(input.value);
     });
     document.addEventListener('submit', function (event) {
         var form = event.target;
         if (!(form instanceof HTMLFormElement) || !form.hasAttribute('data-pagou-document-form') || !window.fetch) return;
         event.preventDefault();
-        var input = form.querySelector('input[name="document"]');
+        var input = form.querySelector('input[name="document"]') || form.querySelector('input[name="postcode"]');
         var button = form.querySelector('button[type="submit"]');
         var feedback = form.querySelector('[data-pagou-document-feedback]');
         var show = function (message) {
@@ -64,7 +68,11 @@
             input.focus();
         };
         var digits = input.value.replace(/\D+/g, '');
-        if (digits.length !== 11 && digits.length !== 14) {
+        if (input.name === 'postcode' && digits.length !== 8) {
+            show('Informe os 8 números do CEP.');
+            return;
+        }
+        if (input.name === 'document' && digits.length !== 11 && digits.length !== 14) {
             show('Informe os 11 números do CPF ou os 14 do CNPJ.');
             return;
         }

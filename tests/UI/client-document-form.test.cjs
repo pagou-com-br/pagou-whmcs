@@ -4,11 +4,11 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const source = fs.readFileSync('package/modules/addons/pagou_payments/assets/client.js', 'utf8');
 
-function fixture(answer) {
+function fixture(answer, name = 'document') {
     const listeners = {}, requests = [];
     let reloaded = false;
     class HTMLInputElement {
-        constructor(form) { this.name = 'document'; this.value = ''; this.form = form; this.attributes = {}; }
+        constructor(form) { this.name = name; this.value = ''; this.form = form; this.attributes = {}; }
         closest(selector) { return selector === '[data-pagou-document-form]' ? this.form : null; }
         setAttribute(name, value) { this.attributes[name] = value; }
         removeAttribute(name) { delete this.attributes[name]; }
@@ -23,7 +23,7 @@ function fixture(answer) {
         }
         hasAttribute(name) { return name === 'data-pagou-document-form'; }
         querySelector(selector) {
-            return { 'input[name="document"]': this.input, 'button[type="submit"]': this.button, '[data-pagou-document-feedback]': this.feedback }[selector];
+            return { ['input[name="' + name + '"]']: this.input, 'button[type="submit"]': this.button, '[data-pagou-document-feedback]': this.feedback }[selector];
         }
     }
     const document = {
@@ -95,4 +95,22 @@ test('a refused document shows the reason and can be tried again', async () => {
     assert.equal(f.form.feedback.textContent, 'Este CPF ou CNPJ não é válido. Confira os números e tente de novo.');
     assert.equal(f.form.button.disabled, false);
     assert.equal(f.form.button.textContent, 'Salvar e gerar');
+});
+
+test('the CEP is formatted while it is typed and must have 8 numbers', async () => {
+    const f = fixture({ status: 'ok' }, 'postcode');
+    f.type('013101000');
+    assert.equal(f.form.input.value, '01310-100');
+    f.type('1310-10');
+    assert.equal(f.form.input.value, '13101-0');
+    assert.equal(f.submit(), true);
+    assert.equal(f.requests.length, 0);
+    assert.equal(f.form.feedback.textContent, 'Informe os 8 números do CEP.');
+
+    f.type('01310100');
+    f.submit();
+    await settle();
+    assert.equal(f.requests.length, 1);
+    assert.equal(f.requests[0].url, 'modules/addons/pagou_payments/document.php');
+    assert.equal(f.reloaded(), true);
 });

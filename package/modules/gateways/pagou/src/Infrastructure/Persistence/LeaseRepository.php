@@ -30,6 +30,17 @@ final class LeaseRepository
         return $query->rowCount() === 1;
     }
 
+    /**
+     * Moves the end of a lease this owner still holds to the given Unix time, never earlier than now.
+     * A lease another owner already took over is left alone.
+     */
+    public function holdUntil(string $name, string $owner, int $until): bool
+    {
+        $query = $this->pdo->prepare('UPDATE pagou_leases SET lease_until = :until, updated_at = :now WHERE name = :name AND owner = :owner');
+        $query->execute(['until' => gmdate('Y-m-d H:i:s', max($until, time())), 'now' => gmdate('Y-m-d H:i:s'), 'name' => $name, 'owner' => $owner]);
+        return $query->rowCount() === 1;
+    }
+
     public function release(string $name, string $owner): bool
     {
         $query = $this->pdo->prepare('DELETE FROM pagou_leases WHERE name = :name AND owner = :owner');

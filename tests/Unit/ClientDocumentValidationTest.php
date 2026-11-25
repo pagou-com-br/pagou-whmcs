@@ -32,4 +32,25 @@ final class ClientDocumentValidationTest extends TestCase
         // The alternative field is checked as well.
         self::assertSame([ClientDocumentValidation::MESSAGE], ClientDocumentValidation::errors(['country' => 'BR', 'customfield' => [3 => '11.222.333/0001-00']], $settings));
     }
+
+    public function testACepWithoutEightDigitsIsRefusedForAClientInBrazil(): void
+    {
+        $settings = new AddonSettings(['cpf_field_id' => '2']);
+        $valid = ['customfield' => [2 => '529.982.247-25']];
+
+        foreach (['01310-1000', '1310-100', '013101'] as $postcode) {
+            self::assertSame([ClientDocumentValidation::POSTCODE_MESSAGE], ClientDocumentValidation::errors(['country' => 'BR', 'postcode' => $postcode] + $valid, $settings), $postcode);
+        }
+        foreach (['01310-100', '01310100', ' 01.310-100 ', ''] as $postcode) {
+            self::assertSame([], ClientDocumentValidation::errors(['country' => 'BR', 'postcode' => $postcode] + $valid, $settings), $postcode);
+        }
+        // Both mistakes are named at once, so the client fixes them in one go.
+        self::assertSame(
+            [ClientDocumentValidation::MESSAGE, ClientDocumentValidation::POSTCODE_MESSAGE],
+            ClientDocumentValidation::errors(['country' => 'BR', 'postcode' => '1310-100', 'customfield' => [2 => '123.456.789-01']], $settings),
+        );
+        // Abroad, or with the check turned off, the postcode follows the WHMCS rules.
+        self::assertSame([], ClientDocumentValidation::errors(['country' => 'PT', 'postcode' => '4805-259'], $settings));
+        self::assertSame([], ClientDocumentValidation::errors(['country' => 'BR', 'postcode' => '1310-100'], new AddonSettings(['document_check_on_profile' => '0'])));
+    }
 }

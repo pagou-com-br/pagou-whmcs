@@ -35,6 +35,17 @@ final class OperationWorkerTest extends TestCase
         self::assertSame(0, $worker->run('worker-b', new WorkerBudget(5, 20, 30))->claimed);
     }
 
+    public function testACompletedJobKeepsTheNoteOfWhyNothingElseWasDone(): void
+    {
+        $clock = new MutableAsyncClock(new \DateTimeImmutable('2026-08-22T10:00:00+00:00'));
+        $outbox = new InMemoryOperationOutbox();
+        (new OperationScheduler($outbox, $clock))->schedule('job-1', OperationType::IssueBoleto, 'boleto:42:1', JobPriority::Issuance, []);
+
+        self::assertSame(1, $this->worker($outbox, $clock, HandlerOutcome::succeeded('invoice_emails_disabled'))->run('worker-a', new WorkerBudget())->succeeded);
+        self::assertSame(JobStatus::Succeeded, $outbox->find('job-1')?->status);
+        self::assertSame('invoice_emails_disabled', $outbox->find('job-1')?->lastError);
+    }
+
     public function testRetryUsesBoundedBackoffThenFails(): void
     {
         $clock = new MutableAsyncClock(new \DateTimeImmutable('2026-08-22T10:00:00+00:00'));
@@ -63,6 +74,21 @@ final class OperationWorkerTest extends TestCase
             $clock->advance('+2 seconds');
         }
         self::assertSame(1, $this->worker($outbox, $clock, HandlerOutcome::succeeded())->run('interactive', new WorkerBudget())->succeeded);
+    }
+
+    public function testALongPendingCheckIsSpacedOutWithoutExhaustingErrorRetries(): void
+    {
+        $clock = new MutableAsyncClock(new \DateTimeImmutable('2026-11-24T10:00:00+00:00'));
+        $outbox = new InMemoryOperationOutbox();
+        (new OperationScheduler($outbox, $clock))->schedule('job-1', OperationType::IssueBoleto, 'one', JobPriority::Issuance, []);
+        $later = $clock->now()->modify('+15 minutes');
+        self::assertSame(1, $this->worker($outbox, $clock, HandlerOutcome::pending('boleto_registration_pending', $later))->run('cron', new WorkerBudget())->retried);
+        self::assertEquals($later, $outbox->find('job-1')?->availableAt);
+        self::assertSame(0, $outbox->find('job-1')?->attempts);
+        // An earlier time never shortens the usual pending interval.
+        $clock->advance('+15 minutes');
+        self::assertSame(1, $this->worker($outbox, $clock, HandlerOutcome::pending('boleto_registration_pending', $clock->now()))->run('cron', new WorkerBudget())->retried);
+        self::assertEquals($clock->now()->modify('+2 seconds'), $outbox->find('job-1')?->availableAt);
     }
 
     public function testRateLimitDeadlineWinsOverShortPolling(): void

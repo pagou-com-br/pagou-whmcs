@@ -23,6 +23,8 @@ final class InvoiceEmailDeliveryTest extends TestCase
     private string $storage;
     private int $sends = 0;
     private bool $failSend = false;
+    /** @var array<string, string>|null */
+    private ?array $preferences = null;
     private mixed $oldStorage;
 
     protected function setUp(): void
@@ -197,6 +199,45 @@ final class InvoiceEmailDeliveryTest extends TestCase
         self::assertSame('invoice_email_delivery_uncertain', $this->pdo->query('SELECT finding_type FROM pagou_reconciliation_findings')->fetchColumn());
     }
 
+    public function testAnInvoiceEmailTheClientTurnedOffIsNeitherSentNorListed(): void
+    {
+        $runtime = $this->runtime();
+        $id = $this->attempt();
+        $this->preferences = ['general' => '1', 'invoice' => '0', 'support' => '1'];
+        $outcome = $this->deliver($runtime, $id);
+        self::assertSame(OperationResult::Succeeded, $outcome->result);
+        // The invoice timeline says why nothing went out.
+        self::assertSame('invoice_emails_disabled', $outcome->reason);
+        self::assertSame(0, $this->sends);
+        self::assertSame(['skipped', 'invoice_emails_disabled'], $this->pdo->query('SELECT status, error_message FROM pagou_invoice_deliveries')->fetch(PDO::FETCH_NUM));
+        self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM pagou_reconciliation_findings')->fetchColumn());
+        self::assertSame(OperationResult::Succeeded, $this->deliver($runtime, $id)->result);
+        self::assertSame(0, $this->sends);
+
+        // With invoice emails on, or without the preference at all, the email goes out as before.
+        $this->setUp();
+        $this->preferences = ['invoice' => '1'];
+        $runtime = $this->runtime();
+        $id = $this->attempt();
+        self::assertNull($this->deliver($runtime, $id)->reason);
+        self::assertSame(1, $this->sends);
+    }
+
+    public function testAReviewOfAnUncertainSendClosesOnceTheClientTurnedInvoiceEmailsOff(): void
+    {
+        $runtime = $this->runtime();
+        $id = $this->attempt();
+        $this->failSend = true;
+        self::assertSame(OperationResult::Uncertain, $this->deliver($runtime, $id)->result);
+        self::assertSame('open', $this->pdo->query('SELECT status FROM pagou_reconciliation_findings')->fetchColumn());
+
+        $this->failSend = false;
+        $this->preferences = ['invoice' => '0'];
+        self::assertSame(OperationResult::Succeeded, $this->deliver($runtime, $id)->result);
+        self::assertSame(1, $this->sends);
+        self::assertSame(['resolved', '{"reason":"invoice_emails_disabled"}'], $this->pdo->query('SELECT status, resolution_json FROM pagou_reconciliation_findings')->fetch(PDO::FETCH_NUM));
+    }
+
     public function testFailurePersistingSuccessfulSendStillCannotResend(): void
     {
         $runtime = $this->runtime();
@@ -357,6 +398,9 @@ final class InvoiceEmailDeliveryTest extends TestCase
         return new WhmcsRuntime($this->pdo, new AddonSettings($settings), new PdoOperationOutbox($this->pdo), function (string $command, array $params): array {
             if ($command === 'GetInvoice') {
                 return ['result' => 'success'] + $this->pdo->query('SELECT * FROM tblinvoices WHERE id=1')->fetch(PDO::FETCH_ASSOC);
+            }
+            if ($command === 'GetClientsDetails') {
+                return ['result' => 'success', 'userid' => $params['clientid']] + ($this->preferences === null ? [] : ['email_preferences' => $this->preferences]);
             }
             if ($command === 'SendEmail') {
                 $this->sends++;

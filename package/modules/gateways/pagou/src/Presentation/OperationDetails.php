@@ -7,6 +7,9 @@ namespace Pagou\Whmcs\Presentation;
 /** Never display provider messages, payloads, tokens or exception text. */
 final class OperationDetails
 {
+    /** Codes a completed operation keeps to say why it ended without doing anything else. */
+    public const NOTES = ['settled_by_charge_state', 'invoice_emails_disabled', 'settled_by_invoice_state', 'pix_refund_awaits_whmcs_record', 'boleto_registration_timeout'];
+
     /** @param array<string,mixed> $row */
     public static function describe(array $row): string
     {
@@ -18,6 +21,8 @@ final class OperationDetails
             'boleto_registration_pending' => 'Aguardando registro bancário',
             'boleto_cancellation_pending' => 'Aguardando confirmação do cancelamento',
             'payment_evidence_missing' => 'Aguardando dados assinados do recebimento; confira as notificações',
+            'payment_after_lookup_booking' => 'Recebimento assinado diferente da baixa feita pela consulta; confira a fatura',
+            'boleto_booking_busy' => 'Baixa do boleto em andamento em outra execução; nova tentativa em seguida',
             'remote_identity_not_yet_recoverable' => 'Vínculo remoto pendente; conferir a operação original',
             'reconciliation_failure' => 'Consulta indisponível; nova tentativa conforme o histórico',
             'boleto_lookup_failed' => 'Consulta de boleto indisponível',
@@ -86,6 +91,7 @@ final class OperationDetails
                 'document_missing' => 'CPF ou CNPJ não encontrado no cadastro do cliente, nos campos configurados',
                 'document_invalid' => 'CPF ou CNPJ inválido no cadastro do cliente, conferido pelos dígitos verificadores',
                 'foreign_address' => 'O boleto exige endereço no Brasil, e o cadastro do cliente está em outro país',
+                'zip_invalid' => 'O CEP do cadastro do cliente não tem 8 números',
                 'min_amount' => 'Valor abaixo do mínimo de R$ 5,00 para boleto',
                 'due_date_invalid' => 'Data de vencimento inválida',
                 'grace_period_invalid' => 'Prazo de pagamento após o vencimento inválido nas configurações',
@@ -98,10 +104,15 @@ final class OperationDetails
             'boleto_remote_outcome_unknown' => 'A Pagou não confirmou a emissão. O módulo confere na Pagou se o boleto foi criado antes de emitir de novo, sem gerar boleto em dobro',
             'pix_remote_outcome_unknown', 'pix_remote_failure' => 'A Pagou não confirmou a emissão do Pix. Para não gerar cobrança em dobro, a emissão não é repetida automaticamente',
             'boleto_pdf_unavailable' => 'PDF do boleto indisponível; a fatura é enviada sem o anexo',
+            'boleto_bank_rejected' => 'O banco recusou o registro do boleto. O módulo gera um novo boleto automaticamente',
+            'boleto_registration_timeout' => 'O banco não registrou o boleto em uma hora. O módulo pediu o cancelamento e gera um novo boleto automaticamente',
             'boleto_paid_during_cancellation' => 'O boleto foi pago durante o cancelamento; o pagamento é registrado normalmente',
             'boleto_cancel_confirmation_invalid' => 'Confirmação sem a fatura de referência; o módulo refaz a conferência',
             'boleto_cancel_unknown', 'pix_cancel_unknown' => 'A Pagou não confirmou o cancelamento; a cobrança é conferida novamente',
             'settled_by_charge_state' => 'Encerrada: a cobrança já foi resolvida',
+            'pix_refund_awaits_whmcs_record' => 'Concluída: a Pagou confirmou a devolução, que aguarda o registro pela aba Refund da fatura',
+            'invoice_emails_disabled' => 'Não enviado: o cliente desativou os e-mails de fatura no cadastro, e o WHMCS não envia esse e-mail',
+            'settled_by_invoice_state' => 'Encerrada: a fatura foi paga ou cancelada, e as instruções de pagamento não são mais necessárias',
             'boleto_issue_recovery_window_open' => 'Conferindo na Pagou se o boleto foi criado; a emissão só é repetida se ele não existir',
             'boleto_issue_recovery_lookup_failed' => 'Consulta à Pagou indisponível; nova conferência em seguida',
             'boleto_issue_recovery_ambiguous' => 'A Pagou lista mais de um boleto para esta emissão; confira na Pagou antes de gerar outro',

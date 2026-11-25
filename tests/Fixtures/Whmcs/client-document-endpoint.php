@@ -25,6 +25,14 @@ namespace Pagou\Whmcs\Application\Runtime {
 
                     return $GLOBALS['scenario']['result'] ?? ['status' => 'ok'];
                 }
+
+                /** @return array<string, string> */
+                public function saveInvoicePostcode(int $invoice, int $client, string $postcode): array
+                {
+                    $GLOBALS['effects'][] = ['invoice' => $invoice, 'client' => $client, 'postcode' => $postcode];
+
+                    return $GLOBALS['scenario']['result'] ?? ['status' => 'ok'];
+                }
             };
         }
     }
@@ -36,7 +44,7 @@ namespace {
     $_SESSION = ['pagou_invoice_progress' => [10 => 'fixture-token']];
     $_SERVER['REQUEST_METHOD'] = $GLOBALS['scenario']['method'] ?? 'POST';
     $_SERVER['HTTP_ACCEPT'] = $GLOBALS['scenario']['accept'] ?? 'application/json';
-    $_POST = array_replace(['invoice' => '10', 'method' => 'pix', 'token' => 'fixture-token', 'document' => '529.982.247-25'], $GLOBALS['scenario']['input'] ?? []);
+    $_POST = $GLOBALS['scenario']['post'] ?? array_replace(['invoice' => '10', 'method' => 'pix', 'token' => 'fixture-token', 'document' => '529.982.247-25'], $GLOBALS['scenario']['input'] ?? []);
     ob_start();
     register_shutdown_function(static function (): void {
         $body = ob_get_clean();

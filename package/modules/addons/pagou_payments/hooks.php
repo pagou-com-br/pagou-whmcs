@@ -39,13 +39,30 @@ add_hook('InvoiceCreated', 1, static function (array $vars): void {
 });
 
 add_hook('InvoiceChangeGateway', 1, static function (array $vars): void {
-    try {
-        $runtime = RuntimeFactory::runtime();
-        $invoiceId = (int) ($vars['invoiceid'] ?? 0);
-        $runtime->scheduleInvoice($invoiceId);
-        $runtime->advanceInvoice($invoiceId);
-    } catch (Throwable $exception) {
-        logActivity('Pagou Payments: falha local ao atualizar o meio da fatura. ' . $exception::class);
+    $invoiceId = (int) ($vars['invoiceid'] ?? 0);
+    // Two quick changes of method may prepare the same charge at once; the loser of that race
+    // finds it prepared on a second, idempotent pass.
+    for ($try = 1; $try <= 2; $try++) {
+        try {
+            $runtime = RuntimeFactory::runtime();
+            $runtime->scheduleInvoice($invoiceId);
+            $runtime->advanceInvoice($invoiceId);
+
+            return;
+        } catch (PDOException $exception) {
+            if ($try === 1 && in_array((string) $exception->getCode(), ['19', '23000', '23505', '40001', 'HY000'], true)) {
+                usleep(200000);
+                continue;
+            }
+            // Only the SQLSTATE: the message may carry values of the query.
+            logActivity('Pagou Payments: falha local ao atualizar o meio da fatura. PDOException ' . (string) $exception->getCode());
+
+            return;
+        } catch (Throwable $exception) {
+            logActivity('Pagou Payments: falha local ao atualizar o meio da fatura. ' . $exception::class);
+
+            return;
+        }
     }
 });
 
@@ -116,7 +133,7 @@ add_hook('ClientDetailsValidation', 1, static function (array $vars): array {
         return \Pagou\Whmcs\Application\Runtime\ClientDocumentValidation::errors($vars, $settings);
     } catch (Throwable $exception) {
         // The module never blocks a registration because its own check is unavailable.
-        logActivity('Pagou Payments: conferência local do CPF ou CNPJ indisponível. ' . $exception::class);
+        logActivity('Pagou Payments: conferência local do CPF, CNPJ ou CEP indisponível. ' . $exception::class);
 
         return [];
     }

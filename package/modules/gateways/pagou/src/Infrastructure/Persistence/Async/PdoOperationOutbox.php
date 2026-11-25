@@ -40,13 +40,16 @@ final class PdoOperationOutbox implements OperationOutbox
         }
         // Only successful "still processing" responses can be brought forward.
         // Network failures, Retry-After deadlines and live leases are untouched.
+        // Only in the first quarter of an hour: an open invoice page must not keep asking
+        // Pagou every few seconds about a boleto the bank is taking long to register.
         $statement = $this->pdo->prepare("UPDATE " . self::TABLE
             . " SET available_at = :available_now, retry_after_utc = :retry_now, version = version + 1"
             . " WHERE status = 'retrying' AND error_message IN ('boleto_registration_pending','boleto_cancellation_pending')"
-            . ' AND updated_at <= :cutoff AND available_at > :future' . $this->scopeSql());
+            . ' AND updated_at <= :cutoff AND available_at > :future AND created_at >= :fresh' . $this->scopeSql());
         $statement->execute([
             'available_now' => $this->timestamp($now), 'retry_now' => $this->timestamp($now),
             'cutoff' => $this->timestamp($now->modify('-2 seconds')), 'future' => $this->timestamp($now),
+            'fresh' => $this->timestamp($now->modify('-15 minutes')),
         ]);
     }
 
@@ -121,9 +124,14 @@ final class PdoOperationOutbox implements OperationOutbox
         }
     }
 
-    public function complete(string $jobId, string $leaseToken): bool
+    public function complete(string $jobId, string $leaseToken, ?string $note = null): bool
     {
-        return $this->transition($jobId, $leaseToken, JobStatus::Succeeded, ['finished_at' => $this->timestamp($this->now())]);
+        $changes = ['finished_at' => $this->timestamp($this->now())];
+        if ($note !== null) {
+            $changes['error_message'] = $note;
+        }
+
+        return $this->transition($jobId, $leaseToken, JobStatus::Succeeded, $changes);
     }
 
     public function retry(string $jobId, string $leaseToken, DateTimeImmutable $availableAt, string $reason, bool $countAttempt = true): bool

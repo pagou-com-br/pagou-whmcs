@@ -187,6 +187,11 @@ final class Dashboard
             ? $this->shortDate((string) $lastMonth['from']) . ' a ' . $this->shortDate((string) $lastMonth['to'])
             : 'o mesmo período do mês anterior';
         $previous = (int) ($lastMonth['amount'] ?? 0);
+        $since = is_string($lastMonth['since'] ?? null) ? $lastMonth['since'] : '';
+        if ($since !== '' && is_string($lastMonth['start'] ?? null) && $since > $lastMonth['start']) {
+            // The module began receiving during that period: its few days would inflate the percentage.
+            return 'Sem base de comparação: o módulo começou a receber em ' . Html::e($this->startDate($since));
+        }
         if ($previous <= 0) {
             return 'Sem base de comparação com ' . Html::e($period);
         }
@@ -372,6 +377,15 @@ final class Dashboard
     {
         return '<div class="pagou-empty-state">' . Html::icon($icon, 20) . '<div><strong>' . Html::e($title) . '</strong><p>'
             . Html::e($detail) . '</p></div></div>';
+    }
+
+    private function startDate(string $utc): string
+    {
+        try {
+            return (new \DateTimeImmutable($utc, new \DateTimeZone('UTC')))->setTimezone(new \DateTimeZone('America/Sao_Paulo'))->format('d/m/Y');
+        } catch (\Throwable) {
+            return $utc;
+        }
     }
 
     private function shortDate(string $date): string

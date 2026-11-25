@@ -509,6 +509,24 @@ final class OperationalReadModelTest extends TestCase
         ]);
     }
 
+    public function testTheConnectionDateFollowsTheLastCheckPagouAnswered(): void
+    {
+        $pdo = $this->pdo();
+        (new EncryptedCredentialStore($pdo))->save('fake-secret-that-must-not-leak');
+        $this->setting($pdo, 'diagnostics_api_state', 'ready', '2026-10-06 06:42:00.000000');
+        $this->setting($pdo, 'diagnostics_api_checked_utc', '2026-10-06 06:42:00.000000', '2026-10-06 06:42:00.000000');
+        $insert = $pdo->prepare('INSERT INTO pagou_payment_operations (id, operation_type, status, deduplication_key, priority, payload_json, available_at, created_at, updated_at, finished_at, error_message) VALUES (?, ?, ?, ?, 10, ?, ?, ?, ?, ?, ?)');
+        $insert->execute(['lookup', 'reconcile_payment', 'succeeded', 'lookup', '{}', '2026-11-06 17:40:00', '2026-11-06 17:40:00', '2026-11-06 17:40:00', '2026-11-06 17:40:00', null]);
+        // Closed by housekeeping, without any request to Pagou.
+        $insert->execute(['settled', 'reconcile_payment', 'succeeded', 'settled', '{}', '2026-11-06 18:00:00', '2026-11-06 18:00:00', '2026-11-06 18:00:00', '2026-11-06 18:00:00', 'settled_by_charge_state']);
+
+        $model = new OperationalReadModel($pdo);
+        $credential = array_values(array_filter($model->admin('dashboard')['onboarding']['steps'], static fn (array $step): bool => $step['id'] === 'credential'))[0];
+        self::assertSame('Última consulta segura aprovada em 06/11/2026 14:40.', $credential['detail']);
+        $check = array_values(array_filter($model->admin('diagnostics')['checks'], static fn (array $item): bool => $item['id'] === 'api'))[0];
+        self::assertSame('Consulta segura aprovada em 06/11/2026 14:40.', $check['detail']);
+    }
+
     private function pdo(): PDO
     {
         $pdo = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);

@@ -10,9 +10,10 @@ final class HandlerOutcome
     {
     }
 
-    public static function succeeded(): self
+    /** A note says why nothing else was done, such as an email the client turned off. */
+    public static function succeeded(?string $note = null): self
     {
-        return new self(OperationResult::Succeeded);
+        return new self(OperationResult::Succeeded, $note);
     }
 
     public static function retryable(string $reason, ?\DateTimeImmutable $retryAt = null): self
@@ -20,9 +21,10 @@ final class HandlerOutcome
         return new self(OperationResult::RetryableFailure, $reason, $retryAt);
     }
 
-    public static function pending(string $reason): self
+    /** A later $retryAt spaces out the checks of something that is taking long at the provider. */
+    public static function pending(string $reason, ?\DateTimeImmutable $retryAt = null): self
     {
-        return new self(OperationResult::Pending, $reason);
+        return new self(OperationResult::Pending, $reason, $retryAt);
     }
 
     /**

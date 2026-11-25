@@ -59,7 +59,7 @@ final class OperationWorker
     {
         match ($outcome->result) {
             OperationResult::Pending => $this->pending($lease, $outcome, $now, $report),
-            OperationResult::Succeeded => $this->complete($lease, $report),
+            OperationResult::Succeeded => $this->complete($lease, $outcome, $report),
             OperationResult::Uncertain => $this->uncertain($lease, $outcome, $report),
             OperationResult::PermanentFailure => $this->fail($lease, $outcome, $report),
             OperationResult::RetryableFailure => $this->retryOrFail($lease, $outcome, $now, $report),
@@ -69,14 +69,18 @@ final class OperationWorker
     private function pending(Lease $lease, HandlerOutcome $outcome, \DateTimeImmutable $now, WorkerReport $report): void
     {
         // Normal provider processing is not a failed request and must not exhaust retries.
-        if ($this->outbox->retry($lease->job->id, $lease->token, $now->modify('+' . $this->pendingRetrySeconds . ' seconds'), $outcome->reason ?? 'pending', false)) {
+        $retryAt = $now->modify('+' . $this->pendingRetrySeconds . ' seconds');
+        if ($outcome->retryAt !== null && $outcome->retryAt > $retryAt) {
+            $retryAt = $outcome->retryAt;
+        }
+        if ($this->outbox->retry($lease->job->id, $lease->token, $retryAt, $outcome->reason ?? 'pending', false)) {
             $report->retried++;
         }
     }
 
-    private function complete(Lease $lease, WorkerReport $report): void
+    private function complete(Lease $lease, HandlerOutcome $outcome, WorkerReport $report): void
     {
-        if ($this->outbox->complete($lease->job->id, $lease->token)) {
+        if ($this->outbox->complete($lease->job->id, $lease->token, $outcome->reason)) {
             $report->succeeded++;
         }
     }

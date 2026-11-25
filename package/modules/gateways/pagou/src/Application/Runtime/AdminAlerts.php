@@ -26,6 +26,7 @@ final class AdminAlerts
     private const WORKER_STALE_MINUTES = 15;
     private const REMINDER_HOURS = 24;
     private const RETRY_MINUTES = 30;
+    private const EVIDENCE_GRACE_MINUTES = 15;
     private const TRACKED_LIMIT = 1000;
     private const LISTED_LIMIT = 20;
     private const LEASE = 'admin-alerts';
@@ -110,7 +111,7 @@ final class AdminAlerts
                 try {
                     $condition = match ($name) {
                         'worker' => $this->workerCondition($now),
-                        'findings' => $this->findingsCondition(),
+                        'findings' => $this->findingsCondition($now),
                         default => $this->refundsCondition(),
                     };
                     $report[$name] = $this->evaluate($name, $condition, $now);
@@ -205,15 +206,18 @@ final class AdminAlerts
     }
 
     /** @return array{items:array<string, array<string, mixed>>, total:int} */
-    private function findingsCondition(): array
+    private function findingsCondition(DateTimeImmutable $now): array
     {
-        $statement = $this->pdo->query(
+        $statement = $this->pdo->prepare(
             'SELECT f.id, f.finding_type, f.details_json, a.invoice_id FROM pagou_reconciliation_findings f '
             . 'LEFT JOIN pagou_payment_attempts a ON a.id = f.attempt_id '
             // A charge refused for the customer data is listed in Pendências, but is no financial risk.
             . "WHERE f.status IN ('open', 'pending') AND f.finding_type <> 'charge_issuance_refused' "
+            // A payment seen by a check seconds before its notification is usually booked by it at once.
+            . "AND NOT (f.finding_type = 'payment_evidence_missing' AND f.detected_at_utc > :recent) "
             . 'ORDER BY f.detected_at_utc DESC, f.id DESC LIMIT ' . self::TRACKED_LIMIT
         );
+        $statement->execute(['recent' => $now->modify('-' . self::EVIDENCE_GRACE_MINUTES . ' minutes')->format('Y-m-d H:i:s.u')]);
         $items = [];
         $economicKeys = [];
         while ($statement !== false && ($row = $statement->fetch(PDO::FETCH_ASSOC)) !== false) {

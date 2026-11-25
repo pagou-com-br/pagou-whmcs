@@ -10,7 +10,7 @@ interface OperationOutbox
 
     public function claim(string $workerId, \DateTimeImmutable $now, \DateInterval $leaseDuration): ?Lease;
 
-    public function complete(string $jobId, string $leaseToken): bool;
+    public function complete(string $jobId, string $leaseToken, ?string $note = null): bool;
 
     public function retry(string $jobId, string $leaseToken, \DateTimeImmutable $availableAt, string $reason, bool $countAttempt = true): bool;
 

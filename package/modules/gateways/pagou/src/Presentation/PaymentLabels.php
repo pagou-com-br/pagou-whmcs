@@ -92,6 +92,7 @@ final class PaymentLabels
             'amount_mismatch' => 'Valor divergente', 'payment_amount_mismatch' => 'Valor divergente', 'card_amount_mismatch' => 'Valor divergente',
             'invoice_not_found' => 'Fatura não localizada', 'missing_invoice' => 'Fatura não localizada', 'currency_mismatch' => 'Moeda divergente',
             'payment_evidence_missing' => 'Dados do recebimento pendentes', 'payment_during_cancellation' => 'Pago durante cancelamento',
+            'payment_after_lookup_booking' => 'Recebimento após baixa pela consulta',
             'due_date_requires_review' => 'Vencimento requer revisão',
             'remote_identity_unavailable' => 'Vínculo remoto pendente', 'card_unknown_provider_status' => 'Estado do cartão desconhecido',
             'card_deletion_requires_review' => 'Remoção do cartão requer revisão', 'pix_refund_requires_review' => 'Reembolso Pix requer conferência',
@@ -100,6 +101,9 @@ final class PaymentLabels
             'invoice_email_template_invalid' => 'Template de e-mail inválido',
             'boleto_issuance_requires_review' => 'Emissão do boleto requer conferência',
             'charge_issuance_refused' => 'Cobrança não emitida',
+            'boleto_cancellation_unconfirmed' => 'Cancelamento do boleto não confirmado',
+            'pix_refund_not_recorded' => 'Devolução sem registro no WHMCS',
+            'reconciliation_keeps_failing' => 'Consulta da cobrança falhando',
             // Finding states.
             'resolved' => 'Resolvida', 'needs_review' => 'Requer revisão',
         ];

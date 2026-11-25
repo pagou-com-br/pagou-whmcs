@@ -25,7 +25,21 @@ final class HookRegistrationTest extends TestCase
         self::assertIsString($hooks);
         self::assertStringContainsString("add_hook('ClientDetailsValidation'", $hooks);
         self::assertStringContainsString('ClientDocumentValidation::errors($vars, $settings)', $hooks);
-        self::assertStringContainsString('conferência local do CPF ou CNPJ indisponível', $hooks);
+        self::assertStringContainsString('conferência local do CPF, CNPJ ou CEP indisponível', $hooks);
+    }
+
+    public function testAMethodChangeTriesOnceMoreAfterARaceAndLogsOnlyTheSqlState(): void
+    {
+        $hooks = file_get_contents(dirname(__DIR__, 2) . '/package/modules/addons/pagou_payments/hooks.php');
+
+        self::assertIsString($hooks);
+        $start = strpos($hooks, "add_hook('InvoiceChangeGateway'");
+        self::assertIsInt($start);
+        $hook = substr($hooks, $start, (int) strpos($hooks, "add_hook('ViewInvoiceDetailsPage'") - $start);
+        self::assertStringContainsString('for ($try = 1; $try <= 2; $try++)', $hook);
+        self::assertStringContainsString('catch (PDOException $exception)', $hook);
+        self::assertStringContainsString("PDOException ' . (string) \$exception->getCode()", $hook);
+        self::assertStringNotContainsString('getMessage()', $hook);
     }
 
     public function testACorrectedProfileIssuesRefusedChargesOnceTheRequestEnds(): void

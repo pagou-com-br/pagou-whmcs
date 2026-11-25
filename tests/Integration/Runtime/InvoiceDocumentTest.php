@@ -15,6 +15,7 @@ final class InvoiceDocumentTest extends TestCase
     private PDO $pdo;
     private string $document = '';
     private string $country = 'BR';
+    private ?string $postcode = null;
     /** @var list<array<string, mixed>> */
     private array $updates = [];
     /** @var list<array<string, mixed>> */
@@ -26,6 +27,7 @@ final class InvoiceDocumentTest extends TestCase
         $this->emails = [];
         $this->updates = [];
         $this->document = '';
+        $this->postcode = null;
         $this->pdo = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
         (new MigrationRunner($this->pdo))->migrate(require dirname(__DIR__, 3) . '/package/modules/addons/pagou_payments/migrations.php');
         $this->pdo->exec('CREATE TABLE tblinvoices (id INTEGER PRIMARY KEY, userid INTEGER, status TEXT, paymentmethod TEXT)');
@@ -199,6 +201,89 @@ final class InvoiceDocumentTest extends TestCase
         self::assertCount(1, $this->emails);
     }
 
+    public function testABoletoRefusedForTheCepAsksForItOnTheInvoiceAndIsIssuedAgain(): void
+    {
+        $this->document = '529.982.247-25';
+        $this->postcode = '01310-1000';
+        $runtime = $this->runtime('boleto');
+        self::assertTrue($runtime->scheduleInvoice(10));
+        $runtime->runWorker('test-worker');
+        // Explained before any request to Pagou, by the field itself.
+        self::assertSame('boleto_local_validation:zip_invalid', $this->failure());
+        self::assertSame(
+            'O CEP do cadastro do cliente não tem 8 números. O cliente pode informar o CEP na própria fatura ou no cadastro, e o boleto é gerado de novo.',
+            $runtime->adminSummary(10)['failure'],
+        );
+        $html = $runtime->renderInvoice(['invoiceid' => 10, 'amount' => '29.99'], 'boleto');
+        self::assertStringContainsString('<strong>O boleto precisa de um CEP com 8 números.</strong><small>Informe o CEP do seu endereço para gerar o boleto agora, ou escolha outra forma de pagamento.</small>', $html);
+        self::assertStringContainsString('<label for="pagou-postcode-10">CEP do endereço</label>', $html);
+        self::assertStringContainsString('name="postcode"', $html);
+        self::assertStringNotContainsString('name="document"', $html);
+        // The same registration would be refused again: no new charge on each view.
+        self::assertFalse($runtime->scheduleInvoice(10));
+        self::assertSame(1, $this->attempts());
+
+        self::assertSame('forbidden', $runtime->saveInvoicePostcode(10, 99, '01310-100')['status']);
+        self::assertSame('invalid', $runtime->saveInvoicePostcode(10, 20, '1310-100')['status']);
+        self::assertSame('invalid', $runtime->saveInvoicePostcode(10, 20, '00000-000')['status']);
+        self::assertSame([], $this->updates);
+        self::assertSame(['status' => 'ok'], $runtime->saveInvoicePostcode(10, 20, '01310100'));
+        // Saved formatted in the profile address, through the native update.
+        self::assertSame([['clientid' => 20, 'postcode' => '01310-100']], $this->updates);
+        self::assertSame(['failed', 'queued'], $this->pdo->query('SELECT status FROM pagou_payment_attempts ORDER BY created_at, status')->fetchAll(PDO::FETCH_COLUMN));
+        self::assertSame('forbidden', $runtime->saveInvoicePostcode(10, 20, '01310-100')['status']);
+    }
+
+    public function testABoletoPagouRefusedBeforeTheCheckAsksForTheCepOnlyWhenItIsWrong(): void
+    {
+        $this->document = '529.982.247-25';
+        $runtime = $this->runtime('boleto');
+        $runtime->scheduleInvoice(10);
+        // A refusal recorded by an earlier version, with the general answer from Pagou.
+        $store = new \Pagou\Whmcs\Application\Runtime\PaymentAttemptStore($this->pdo);
+        $attempt = (string) $this->pdo->query('SELECT id FROM pagou_payment_attempts')->fetchColumn();
+        $store->complete($attempt, '', 'failed', ['state' => 'failed', 'message' => \Pagou\Whmcs\Application\Runtime\IssuanceFailure::customerMessage('boleto_request_rejected:unknown')]);
+        $store->recordFailure($attempt, 'boleto_request_rejected:unknown', 'earlier-registration');
+
+        // A CEP of 8 digits was not the reason: the general message stays, without a form.
+        $html = $runtime->renderInvoice(['invoiceid' => 10, 'amount' => '29.99'], 'boleto');
+        self::assertStringContainsString('<strong>Não foi possível gerar o boleto com os dados do seu cadastro.</strong>', $html);
+        self::assertStringNotContainsString('data-pagou-document-form', $html);
+        self::assertSame('forbidden', $runtime->saveInvoicePostcode(10, 20, '01310-100')['status']);
+
+        $this->postcode = '1310-100';
+        $html = $runtime->renderInvoice(['invoiceid' => 10, 'amount' => '29.99'], 'boleto');
+        self::assertStringContainsString('<strong>O boleto precisa de um CEP com 8 números.</strong>', $html);
+        self::assertStringContainsString('name="postcode"', $html);
+        self::assertStringStartsWith('O CEP do cadastro do cliente não tem 8 números.', $runtime->adminSummary(10)['failure']);
+        self::assertSame('ok', $runtime->saveInvoicePostcode(10, 20, '01310-100')['status']);
+        self::assertSame(2, $this->attempts());
+    }
+
+    public function testThePixIgnoresTheCepAndTheCepFormIsLimitedPerInvoice(): void
+    {
+        $this->document = '529.982.247-25';
+        $this->postcode = '1310-100';
+        // The Pix carries no address: a wrong CEP never stops it.
+        $pix = $this->runtime('pix');
+        $pix->scheduleInvoice(10);
+        self::assertStringNotContainsString('zip', $this->failure());
+        self::assertStringNotContainsString('name="postcode"', $pix->renderInvoice(['invoiceid' => 10, 'amount' => '29.99'], 'pix'));
+        self::assertSame('forbidden', $pix->saveInvoicePostcode(10, 20, '01310-100')['status']);
+
+        $this->setUp();
+        $this->document = '529.982.247-25';
+        $this->postcode = '1310-100';
+        $runtime = $this->runtime('boleto');
+        $runtime->scheduleInvoice(10);
+        $runtime->runWorker('test-worker');
+        foreach (range(1, 5) as $try) {
+            self::assertSame('invalid', $runtime->saveInvoicePostcode(10, 20, '123')['status'], (string) $try);
+        }
+        self::assertSame('limited', $runtime->saveInvoicePostcode(10, 20, '01310-100')['status']);
+        self::assertSame([], $this->updates);
+    }
+
     private function housekeeping(): \Pagou\Whmcs\Application\Runtime\OperationHousekeeping
     {
         return new \Pagou\Whmcs\Application\Runtime\OperationHousekeeping($this->pdo, new \Pagou\Whmcs\Application\Async\OperationScheduler(new PdoOperationOutbox($this->pdo), new \Pagou\Whmcs\Application\Async\SystemAsyncClock()));
@@ -219,15 +304,18 @@ final class InvoiceDocumentTest extends TestCase
                 return ['result' => 'success'];
             }
             if ($command === 'UpdateClient') {
-                $parameters['customfields'] = unserialize(base64_decode((string) $parameters['customfields']));
+                if (isset($parameters['customfields'])) {
+                    $parameters['customfields'] = unserialize(base64_decode((string) $parameters['customfields']));
+                    $this->document = (string) current($parameters['customfields']);
+                }
+                $this->postcode = isset($parameters['postcode']) ? (string) $parameters['postcode'] : $this->postcode;
                 $this->updates[] = $parameters;
-                $this->document = (string) current($parameters['customfields']);
 
                 return ['result' => 'success'];
             }
             if ($command === 'GetClientsDetails') {
                 return ['result' => 'success', 'firstname' => 'Cliente', 'lastname' => 'Teste', 'email' => 'cliente@example.com', 'phonenumber' => '11999999999',
-                    'address1' => 'Rua A, 1', 'city' => 'São Paulo', 'state' => 'SP', 'postcode' => $this->country === 'BR' ? '01310-100' : '4805-259',
+                    'address1' => 'Rua A, 1', 'city' => 'São Paulo', 'state' => 'SP', 'postcode' => $this->postcode ?? ($this->country === 'BR' ? '01310-100' : '4805-259'),
                     'country' => $this->country, 'customfields' => ['customfield' => [['id' => 5, 'value' => $this->document], ['id' => 6, 'value' => '']]]];
             }
 

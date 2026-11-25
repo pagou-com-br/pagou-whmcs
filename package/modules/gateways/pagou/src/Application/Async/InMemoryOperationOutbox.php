@@ -57,10 +57,13 @@ final class InMemoryOperationOutbox implements OperationOutbox
         return new Lease($job, $token, $expiresAt);
     }
 
-    public function complete(string $jobId, string $leaseToken): bool
+    public function complete(string $jobId, string $leaseToken, ?string $note = null): bool
     {
-        return $this->transition($jobId, $leaseToken, function (OperationJob $job): void {
+        return $this->transition($jobId, $leaseToken, function (OperationJob $job) use ($note): void {
             $job->status = JobStatus::Succeeded;
+            if ($note !== null) {
+                $job->lastError = $note;
+            }
             $this->releaseDeduplicationKey($job);
         });
     }

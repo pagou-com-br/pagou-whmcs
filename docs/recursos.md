@@ -47,7 +47,10 @@ divulgada pela API esteja habilitada neste checkout.
 
 Notificações e conciliação conferem identidade, valor e relação com a fatura
 antes de registrar o recebimento pelos mecanismos nativos do WHMCS. Um estado
-remoto `paid`, isoladamente, não é suficiente.
+remoto `paid`, isoladamente, não é suficiente. A exceção é o boleto registrado
+sem multa, juros ou desconto: se a notificação do pagamento não chegar em uma
+hora, a consulta da cobrança registra o valor emitido, único valor possível, e
+uma notificação posterior não gera outro lançamento.
 
 Em resultados incertos, a operação original precisa ser consultada e conciliada.
 Repetir a criação, o cancelamento ou a devolução pode produzir efeitos

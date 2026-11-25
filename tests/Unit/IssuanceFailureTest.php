@@ -45,8 +45,23 @@ final class IssuanceFailureTest extends TestCase
         self::assertStringStartsWith('O boleto exige um endereço no Brasil.', IssuanceFailure::customerMessage('boleto_local_validation:foreign_address'));
         self::assertStringStartsWith('O banco não emitiu o boleto.', IssuanceFailure::customerMessage('boleto_request_rejected:provider_rejected'));
         self::assertStringStartsWith('Não foi possível gerar o boleto agora.', IssuanceFailure::customerMessage('boleto_request_rejected:account_suspended'));
-        foreach (['boleto_request_rejected:unknown', 'boleto_request_rejected:invalid_customer_address', 'boleto_local_validation:missing_zip', 'boleto_request_rejected'] as $reason) {
+        foreach (['boleto_request_rejected:unknown', 'boleto_request_rejected:invalid_customer_address', 'boleto_request_rejected'] as $reason) {
             self::assertStringStartsWith('Não foi possível gerar o boleto com os dados do seu cadastro.', IssuanceFailure::customerMessage($reason), $reason);
+        }
+    }
+
+    public function testACepWithoutEightDigitsIsNamedAndCanBeCorrectedOnTheInvoice(): void
+    {
+        $code = IssuanceFailure::local(new \InvalidArgumentException('Boleto payer zip must have 8 digits.'));
+        self::assertSame('zip_invalid', $code);
+        self::assertSame('O CEP do cadastro do cliente não tem 8 números', OperationDetails::reason('boleto_local_validation:zip_invalid'));
+        foreach (['boleto_local_validation:zip_invalid', 'boleto_local_validation:missing_zip', 'retry_exhausted:boleto_local_validation:zip_invalid'] as $reason) {
+            self::assertTrue(IssuanceFailure::postcodeRefused($reason), $reason);
+            self::assertTrue(IssuanceFailure::customerData($reason), $reason);
+            self::assertSame('O boleto precisa de um CEP com 8 números. Atualize o CEP no seu cadastro ou escolha outra forma de pagamento.', IssuanceFailure::customerMessage($reason), $reason);
+        }
+        foreach (['boleto_request_rejected:unknown', 'boleto_local_validation:missing_street', 'boleto_local_validation:foreign_address'] as $reason) {
+            self::assertFalse(IssuanceFailure::postcodeRefused($reason), $reason);
         }
     }
 }

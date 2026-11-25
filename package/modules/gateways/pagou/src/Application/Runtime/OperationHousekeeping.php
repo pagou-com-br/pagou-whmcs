@@ -14,8 +14,9 @@ use Pagou\Whmcs\Support\Uuid;
 /**
  * Closes what the queue can no longer resolve by itself: an uncertain operation whose
  * charge has meanwhile been settled, a boleto cancellation left without an outcome, a
- * refused boleto still shown as being prepared, an issuance review whose charge was replaced
- * and the listing of a charge not issued once its invoice moved on.
+ * refused boleto still shown as being prepared, an issuance review whose charge was replaced,
+ * the listing of a charge not issued once its invoice moved on, and a boleto whose
+ * cancellation Pagou never confirms, which is listed instead.
  * Nothing financial is decided here; open payments and refunds are never touched.
  */
 final class OperationHousekeeping
@@ -226,6 +227,132 @@ final class OperationHousekeeping
         }
 
         return $closed;
+    }
+
+    /**
+     * Lists a boleto whose cancellation Pagou has not confirmed for two days: until then it may
+     * still be paid at the bank, after the invoice was paid or moved on. The daily new request
+     * goes on, and the listing closes by itself once the boleto is cancelled or paid.
+     */
+    public function flagUnconfirmedCancellations(\DateTimeImmutable $now, int $limit = 50): int
+    {
+        $at = $now->format('Y-m-d H:i:s.u');
+        $this->pdo->prepare(
+            "UPDATE pagou_reconciliation_findings SET status = 'resolved', resolved_at_utc = :resolved_at, "
+            . "resolution_json = '{\"reason\":\"charge_closed\"}', updated_at = :updated_at, version = version + 1 "
+            . "WHERE finding_type = 'boleto_cancellation_unconfirmed' AND status = 'open' "
+            . "AND attempt_id IN (SELECT id FROM pagou_payment_attempts WHERE status <> 'cancel_requested')"
+        )->execute(['resolved_at' => $at, 'updated_at' => $at]);
+        $statement = $this->pdo->prepare(
+            'SELECT a.id, a.invoice_id, MIN(o.created_at) AS requested_at FROM pagou_payment_attempts a '
+            . "INNER JOIN pagou_payment_operations o ON o.attempt_id = a.id AND o.operation_type = 'cancel_boleto' "
+            . "WHERE a.method = 'boleto' AND a.status = 'cancel_requested' AND a.remote_id IS NOT NULL AND a.remote_id <> '' "
+            . 'AND NOT EXISTS (SELECT 1 FROM pagou_reconciliation_findings f WHERE f.attempt_id = a.id '
+            . "AND f.finding_type = 'boleto_cancellation_unconfirmed') "
+            . 'GROUP BY a.id, a.invoice_id HAVING MIN(o.created_at) < :cutoff ORDER BY requested_at ASC LIMIT ' . max(1, min(200, $limit))
+        );
+        $statement->execute(['cutoff' => $now->modify('-2 days')->format('Y-m-d H:i:s.u')]);
+        $insert = $this->pdo->prepare(
+            'INSERT INTO pagou_reconciliation_findings (id, finding_key, attempt_id, severity, finding_type, status, details_json, '
+            . 'detected_at_utc, resolved_at_utc, resolved_by, resolution_json, created_at, updated_at, version) '
+            . "VALUES (:id, :finding_key, :attempt_id, 'high', 'boleto_cancellation_unconfirmed', 'open', :details_json, "
+            . ':detected_at, NULL, NULL, NULL, :created_at, :updated_at, 1)'
+        );
+        $flagged = 0;
+        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $requested = (new \DateTimeImmutable((string) $row['requested_at'], new \DateTimeZone('UTC')))
+                ->setTimezone(new \DateTimeZone('America/Sao_Paulo'))->format('d/m/Y');
+            $message = 'O cancelamento deste boleto foi pedido em ' . $requested . ', e a Pagou ainda não o confirmou. '
+                . 'Enquanto isso, ele pode ser pago no banco. Confira o boleto na Pagou e, se for preciso, cancele por lá. '
+                . 'O módulo pede o cancelamento de novo uma vez por dia e encerra esta pendência quando o boleto for cancelado ou pago.';
+            try {
+                $insert->execute([
+                    'id' => Uuid::v4(),
+                    // The key recordFinding uses, so the same charge is never listed twice.
+                    'finding_key' => hash('sha256', (string) $row['id'] . '|boleto_cancellation_unconfirmed'),
+                    'attempt_id' => (string) $row['id'],
+                    'details_json' => json_encode(['message' => $message, 'invoice_id' => (int) $row['invoice_id']], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
+                    'detected_at' => $at,
+                    'created_at' => $at,
+                    'updated_at' => $at,
+                ]);
+                $flagged++;
+            } catch (\PDOException $exception) {
+                if (!in_array((string) $exception->getCode(), ['19', '23000', '23505'], true)) {
+                    throw $exception;
+                }
+            }
+        }
+
+        return $flagged;
+    }
+
+    /**
+     * Lists a charge whose check failed three times in a row, each time after all its retries,
+     * and moves it to one check a day instead of the same failure every few minutes. The
+     * listing closes once a check succeeds or the charge needs no more checks.
+     */
+    public function flagFailingChecks(\DateTimeImmutable $now, int $limit = 50): int
+    {
+        $at = $now->format('Y-m-d H:i:s.u');
+        // Read first: MySQL refuses an UPDATE whose subquery reads the findings table itself.
+        $recovered = $this->pdo->query(
+            "SELECT f.id FROM pagou_reconciliation_findings f WHERE f.finding_type = 'reconciliation_keeps_failing' AND f.status = 'open' "
+            . "AND (EXISTS (SELECT 1 FROM pagou_payment_operations s WHERE s.attempt_id = f.attempt_id AND s.operation_type LIKE 'reconcile%' "
+            . "AND s.status = 'succeeded' AND COALESCE(s.finished_at, s.updated_at) > f.detected_at_utc) "
+            . 'OR NOT EXISTS (SELECT 1 FROM pagou_payment_attempts a WHERE a.id = f.attempt_id AND ' . PeriodicReconciliation::eligibleSql() . '))'
+        );
+        $close = $this->pdo->prepare(
+            "UPDATE pagou_reconciliation_findings SET status = 'resolved', resolved_at_utc = :resolved_at, "
+            . "resolution_json = '{\"reason\":\"check_succeeded\"}', updated_at = :updated_at, version = version + 1 WHERE id = :id AND status = 'open'"
+        );
+        foreach ($recovered === false ? [] : $recovered->fetchAll(PDO::FETCH_COLUMN) as $id) {
+            $close->execute(['resolved_at' => $at, 'updated_at' => $at, 'id' => (string) $id]);
+        }
+        $statement = $this->pdo->prepare(
+            'SELECT a.id, COUNT(*) AS failures, MIN(o.created_at) AS since FROM pagou_payment_attempts a '
+            . "INNER JOIN pagou_payment_operations o ON o.attempt_id = a.id AND o.operation_type = 'reconcile_payment' AND o.status = 'failed' "
+            . 'WHERE ' . PeriodicReconciliation::eligibleSql()
+            . " AND o.created_at > COALESCE((SELECT MAX(s.created_at) FROM pagou_payment_operations s WHERE s.attempt_id = a.id "
+            . "AND s.operation_type LIKE 'reconcile%' AND s.status = 'succeeded'), '1970-01-01') "
+            . 'AND NOT EXISTS (SELECT 1 FROM pagou_reconciliation_findings f WHERE f.attempt_id = a.id '
+            . "AND f.finding_type = 'reconciliation_keeps_failing' AND f.status = 'open') "
+            . 'GROUP BY a.id HAVING COUNT(*) >= 3 ORDER BY since ASC LIMIT ' . max(1, min(200, $limit))
+        );
+        $statement->execute();
+        $flagged = 0;
+        foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $since = (new \DateTimeImmutable((string) $row['since'], new \DateTimeZone('UTC')))
+                ->setTimezone(new \DateTimeZone('America/Sao_Paulo'))->format('d/m/Y');
+            $message = 'A consulta desta cobrança na Pagou falhou ' . (int) $row['failures'] . ' vezes seguidas desde ' . $since
+                . ', cada uma depois de várias tentativas. Para não repetir a mesma falha a cada poucos minutos, o módulo passa a consultar '
+                . 'uma vez por dia e encerra esta pendência quando uma consulta der certo. Confira a cobrança na Pagou e o diagnóstico.';
+            $finding = $this->pdo->prepare(
+                'INSERT INTO pagou_reconciliation_findings (id, finding_key, attempt_id, severity, finding_type, status, details_json, '
+                . 'detected_at_utc, resolved_at_utc, resolved_by, resolution_json, created_at, updated_at, version) '
+                . "VALUES (:id, :finding_key, :attempt_id, 'medium', 'reconciliation_keeps_failing', 'open', :details_json, "
+                . ':detected_at, NULL, NULL, NULL, :created_at, :updated_at, 1)'
+            );
+            try {
+                $finding->execute([
+                    'id' => Uuid::v4(),
+                    // A charge that fails again after recovering is listed again, under a key of its own.
+                    'finding_key' => hash('sha256', (string) $row['id'] . '|reconciliation_keeps_failing|' . (string) $row['since']),
+                    'attempt_id' => (string) $row['id'],
+                    'details_json' => json_encode(['message' => $message], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
+                    'detected_at' => $at,
+                    'created_at' => $at,
+                    'updated_at' => $at,
+                ]);
+                $flagged++;
+            } catch (\PDOException $exception) {
+                if (!in_array((string) $exception->getCode(), ['19', '23000', '23505'], true)) {
+                    throw $exception;
+                }
+            }
+        }
+
+        return $flagged;
     }
 
     private function booked(int $invoiceId, string $remoteId): bool

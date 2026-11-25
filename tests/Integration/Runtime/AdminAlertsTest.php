@@ -192,6 +192,20 @@ final class AdminAlertsTest extends TestCase
         self::assertSame([], $this->calls);
     }
 
+    public function testAPaymentSeenSecondsBeforeItsNotificationIsAlertedOnlyIfItStaysOpen(): void
+    {
+        $this->attempt('attempt-107', 107);
+        $this->finding('finding-7', 'attempt-107', 'payment_evidence_missing', 'open', '-1 minute');
+
+        // Usually booked by the notification within the same minute: nothing to tell yet.
+        self::assertSame('idle', $this->alerts()->run()['findings']);
+        self::assertSame([], $this->calls);
+
+        $this->now = $this->now->modify('+20 minutes');
+        self::assertSame('alerted', $this->alerts()->run()['findings']);
+        self::assertCount(1, $this->calls);
+    }
+
     public function testUnknownFindingTypesUseAGenericPortugueseLabel(): void
     {
         $this->finding('finding-x', null, 'internal_code_without_label', 'open', '-1 minute');

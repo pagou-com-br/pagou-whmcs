@@ -150,6 +150,62 @@ final class OperationHousekeepingTest extends TestCase
         return new OperationHousekeeping($this->pdo, new OperationScheduler(new PdoOperationOutbox($this->pdo), new SystemAsyncClock()));
     }
 
+    public function testABoletoWhoseCancellationIsNeverConfirmedIsListedUntilItIsCancelledOrPaid(): void
+    {
+        $stale = $this->charge(30, 'boleto', 'boleto-stale', 'cancel_requested');
+        $this->operation('cancel-first', 'cancel_boleto', $stale, 'boleto_cancel_unknown', '-3 days');
+        $this->operation('cancel-daily', 'cancel_boleto', $stale, 'boleto_cancel_unknown', '-1 hour');
+        // Asked yesterday: Pagou may still confirm it.
+        $recent = $this->charge(31, 'boleto', 'boleto-recent', 'cancel_requested');
+        $this->operation('cancel-recent', 'cancel_boleto', $recent, 'boleto_cancel_unknown', '-1 day');
+        $cancelled = $this->charge(32, 'boleto', 'boleto-cancelled', 'cancelled');
+        $this->operation('cancel-done', 'cancel_boleto', $cancelled, '', '-3 days', 'succeeded');
+        $now = new DateTimeImmutable('now', new \DateTimeZone('UTC'));
+
+        self::assertSame(1, $this->housekeeping()->flagUnconfirmedCancellations($now));
+        $finding = $this->pdo->query("SELECT attempt_id, severity, status, details_json FROM pagou_reconciliation_findings WHERE finding_type = 'boleto_cancellation_unconfirmed'")->fetch(PDO::FETCH_ASSOC);
+        self::assertSame([$stale, 'high', 'open'], [$finding['attempt_id'], $finding['severity'], $finding['status']]);
+        $asked = $now->modify('-3 days')->setTimezone(new \DateTimeZone('America/Sao_Paulo'))->format('d/m/Y');
+        self::assertStringStartsWith('O cancelamento deste boleto foi pedido em ' . $asked . ', e a Pagou ainda não o confirmou. Enquanto isso, ele pode ser pago no banco.', json_decode((string) $finding['details_json'], true)['message']);
+        self::assertSame('Cancelamento do boleto não confirmado', \Pagou\Whmcs\Presentation\PaymentLabels::label('boleto_cancellation_unconfirmed'));
+        // Listed once, however many daily requests follow.
+        self::assertSame(0, $this->housekeeping()->flagUnconfirmedCancellations($now));
+        self::assertSame(1, (int) $this->pdo->query("SELECT COUNT(*) FROM pagou_reconciliation_findings WHERE finding_type = 'boleto_cancellation_unconfirmed'")->fetchColumn());
+
+        // Cancelled or paid at last: the listing closes by itself.
+        $this->pdo->prepare("UPDATE pagou_payment_attempts SET status = 'cancelled' WHERE id = ?")->execute([$stale]);
+        $this->housekeeping()->flagUnconfirmedCancellations($now);
+        self::assertSame(['resolved', '{"reason":"charge_closed"}'], $this->pdo->query("SELECT status, resolution_json FROM pagou_reconciliation_findings WHERE finding_type = 'boleto_cancellation_unconfirmed'")->fetch(PDO::FETCH_NUM));
+    }
+
+    public function testAChargeWhoseCheckKeepsFailingIsListedOnceAndClosesWhenACheckSucceeds(): void
+    {
+        $failing = $this->charge(40, 'pix', 'pix-failing', 'pending');
+        $this->operation('check-ok', 'reconcile_payment', $failing, '', '-5 days', 'succeeded');
+        foreach (['-3 days', '-2 days', '-1 day'] as $i => $age) {
+            $this->operation('check-failed-' . $i, 'reconcile_payment', $failing, 'retry_exhausted:reconciliation_failure:RuntimeException', $age, 'failed');
+        }
+        // Two failures after its last success are not a pattern yet.
+        $recovering = $this->charge(41, 'pix', 'pix-recovering', 'pending');
+        $this->operation('old-failed', 'reconcile_payment', $recovering, 'retry_exhausted', '-6 days', 'failed');
+        $this->operation('recovered', 'reconcile_payment', $recovering, '', '-5 days', 'succeeded');
+        $this->operation('new-failed-1', 'reconcile_payment', $recovering, 'retry_exhausted', '-2 days', 'failed');
+        $this->operation('new-failed-2', 'reconcile_payment', $recovering, 'retry_exhausted', '-1 day', 'failed');
+        $now = new DateTimeImmutable('now', new \DateTimeZone('UTC'));
+
+        self::assertSame(1, $this->housekeeping()->flagFailingChecks($now));
+        $finding = $this->pdo->query("SELECT attempt_id, severity, details_json FROM pagou_reconciliation_findings WHERE finding_type = 'reconciliation_keeps_failing' AND status = 'open'")->fetch(PDO::FETCH_ASSOC);
+        self::assertSame([$failing, 'medium'], [$finding['attempt_id'], $finding['severity']]);
+        self::assertStringStartsWith('A consulta desta cobrança na Pagou falhou 3 vezes seguidas desde ', json_decode((string) $finding['details_json'], true)['message']);
+        self::assertSame(0, $this->housekeeping()->flagFailingChecks($now));
+
+        // A check that works again closes the listing.
+        $this->operation('check-again', 'reconcile_payment', $failing, '', '-0 minutes', 'succeeded');
+        $this->pdo->exec("UPDATE pagou_payment_operations SET finished_at = '2999-01-01' WHERE id = 'check-again'");
+        $this->housekeeping()->flagFailingChecks($now);
+        self::assertSame('resolved', $this->pdo->query("SELECT status FROM pagou_reconciliation_findings WHERE finding_type = 'reconciliation_keeps_failing'")->fetchColumn());
+    }
+
     private function charge(int $invoice, string $method, string $remote, string $status): string
     {
         $id = $this->attempts->ensureCurrent($invoice, 7, $method, 1000, '2026-10-20')['id'];

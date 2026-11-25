@@ -7,12 +7,13 @@ namespace Pagou\Whmcs\Application\Runtime;
 use Pagou\Whmcs\Domain\Document;
 
 /**
- * Checks the CPF or CNPJ a client in Brazil types on registration or on a profile edit,
- * in the document fields the module reads, so a wrong number is fixed before any charge.
+ * Checks the CPF or CNPJ and the CEP a client in Brazil types on registration or on a
+ * profile edit, in the fields the module reads, so a wrong number is fixed before any charge.
  */
 final class ClientDocumentValidation
 {
     public const MESSAGE = 'O CPF ou CNPJ informado não é válido. Confira os números.';
+    public const POSTCODE_MESSAGE = 'O CEP informado deve ter 8 números.';
 
     /**
      * @param array<string, mixed> $vars The fields WHMCS validates, with `customfield` by field id.
@@ -24,6 +25,9 @@ final class ClientDocumentValidation
         if (!$settings->boolean('document_check_on_profile', true) || strtoupper(trim((string) ($vars['country'] ?? ''))) !== 'BR') {
             return [];
         }
+        // The boleto is registered only with a CEP of 8 digits; an empty one keeps the WHMCS rule.
+        $postcode = is_scalar($vars['postcode'] ?? null) ? (preg_replace('/\D+/', '', (string) $vars['postcode']) ?? '') : '';
+        $errors = $postcode !== '' && strlen($postcode) !== 8 ? [self::POSTCODE_MESSAGE] : [];
         $submitted = is_array($vars['customfield'] ?? null) ? $vars['customfield'] : [];
         foreach ($settings->documentFieldIds() as $id) {
             $value = $submitted[$id] ?? null;
@@ -33,10 +37,10 @@ final class ClientDocumentValidation
             try {
                 Document::fromString((string) $value);
             } catch (\InvalidArgumentException) {
-                return [self::MESSAGE];
+                return [self::MESSAGE, ...$errors];
             }
         }
 
-        return [];
+        return $errors;
     }
 }

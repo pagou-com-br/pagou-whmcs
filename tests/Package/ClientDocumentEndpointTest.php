@@ -17,6 +17,17 @@ final class ClientDocumentEndpointTest extends TestCase
         self::assertSame([['invoice' => 10, 'method' => 'pix', 'client' => 20, 'document' => '529.982.247-25']], $response['effects']);
     }
 
+    public function testTheCepTypedOnARefusedBoletoGoesToItsOwnSave(): void
+    {
+        $response = $this->request(['post' => ['invoice' => '10', 'method' => 'boleto', 'token' => 'fixture-token', 'postcode' => '01310-100']]);
+        self::assertSame(200, $response['http']);
+        self::assertSame([['invoice' => 10, 'client' => 20, 'postcode' => '01310-100']], $response['effects']);
+
+        $forged = $this->request(['post' => ['invoice' => '10', 'method' => 'boleto', 'token' => 'forged', 'postcode' => '01310-100']]);
+        self::assertSame(403, $forged['http']);
+        self::assertSame([], $forged['effects']);
+    }
+
     public function testAnonymousForgedOrReadRequestsNeverReachTheProfile(): void
     {
         foreach ([[['anonymous' => true], 403], [['input' => ['token' => 'forged']], 403], [['input' => ['invoice' => '11']], 403], [['method' => 'GET'], 405]] as [$scenario, $http]) {

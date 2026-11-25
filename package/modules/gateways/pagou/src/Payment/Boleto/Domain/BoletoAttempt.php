@@ -87,8 +87,9 @@ final class BoletoAttempt
         if (in_array($charge->status, ['paid', 'paid_with_discount', 'paid_with_fine_or_interest'], true)) {
             return self::PAID;
         }
-        // A late registration notification cannot reopen a terminal local charge.
-        if (in_array($this->status, [self::PAID, self::CANCELLED, self::SUPERSEDED], true)) {
+        // A late registration notification cannot reopen a terminal local charge, nor a boleto
+        // given up because the bank never registered it: a new one already replaced it.
+        if (in_array($this->status, [self::PAID, self::CANCELLED, self::SUPERSEDED, self::FAILED], true)) {
             return $this->status;
         }
         return match ($charge->status) {
@@ -132,6 +133,26 @@ final class BoletoAttempt
             $this->supersedesAttemptId,
             $this->supersededByAttemptId,
             $this->failureReason,
+            $this->split,
+        );
+    }
+
+    /** The boleto was given up, for example because the bank never registered it. */
+    public function failed(string $reason): self
+    {
+        return new self(
+            $this->id,
+            $this->invoiceId,
+            $this->revision,
+            $this->amountCentavos,
+            $this->dueDate,
+            $this->idempotencyKey,
+            self::FAILED,
+            $this->remoteId,
+            $this->artifacts,
+            $this->supersedesAttemptId,
+            $this->supersededByAttemptId,
+            $reason,
             $this->split,
         );
     }

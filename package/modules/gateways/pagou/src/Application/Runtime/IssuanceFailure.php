@@ -10,6 +10,9 @@ namespace Pagou\Whmcs\Application\Runtime;
  */
 final class IssuanceFailure
 {
+    /** The first sentence the customer reads when the boleto needs another CEP. */
+    public const POSTCODE_MESSAGE = 'O boleto precisa de um CEP com 8 números.';
+
     /** Messages the Pagou charges API answers with, as `{"error": "..."}`. */
     private const PROVIDER = [
         'invalid customer document' => 'invalid_customer_document',
@@ -47,6 +50,9 @@ final class IssuanceFailure
         if (str_contains($message, 'address must be in Brazil')) {
             return 'foreign_address';
         }
+        if (str_contains($message, 'zip must have 8 digits')) {
+            return 'zip_invalid';
+        }
         if (preg_match('/^Boleto payer ([a-z_]+) is required\.$/', $message, $match) === 1) {
             return 'missing_' . $match[1];
         }
@@ -69,13 +75,19 @@ final class IssuanceFailure
         return in_array(self::detail($reason), ['document_missing', 'document_invalid', 'invalid_customer_document'], true);
     }
 
+    /** A boleto refused because the CEP is missing or does not have 8 digits, which the customer can correct on the invoice. */
+    public static function postcodeRefused(string $reason): bool
+    {
+        return in_array(self::detail($reason), ['zip_invalid', 'missing_zip'], true);
+    }
+
     /** A refusal of the customer data itself: issuing again with the same data is refused too. */
     public static function customerData(string $reason): bool
     {
         $detail = self::detail($reason);
 
         return self::documentRefused($reason) || str_starts_with($detail, 'missing_')
-            || in_array($detail, ['invalid_customer_address', 'customer_not_found', 'foreign_address'], true);
+            || in_array($detail, ['invalid_customer_address', 'customer_not_found', 'foreign_address', 'zip_invalid'], true);
     }
 
     /** What the customer reads on the invoice when the Pix or the boleto could not be issued. */
@@ -87,6 +99,7 @@ final class IssuanceFailure
         return match (true) {
             $detail === 'foreign_address' => 'O boleto exige um endereço no Brasil. Escolha outra forma de pagamento ou atualize o endereço no seu cadastro.',
             self::documentRefused($reason) => 'O ' . $charge . ' precisa de um CPF ou CNPJ válido. Atualize o documento no seu cadastro ou escolha outra forma de pagamento.',
+            self::postcodeRefused($reason) => self::POSTCODE_MESSAGE . ' Atualize o CEP no seu cadastro ou escolha outra forma de pagamento.',
             $detail === 'provider_rejected' => 'O banco não emitiu o boleto. Escolha outra forma de pagamento ou fale com o atendimento.',
             in_array($detail, ['min_amount', 'missing_pix_key', 'account_suspended', 'due_date_invalid', 'grace_period_invalid'], true)
                 => 'Não foi possível gerar o ' . $charge . ' agora. Escolha outra forma de pagamento ou fale com o atendimento.',

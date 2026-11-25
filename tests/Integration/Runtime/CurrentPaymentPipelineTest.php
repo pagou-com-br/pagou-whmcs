@@ -495,10 +495,10 @@ final class CurrentPaymentPipelineTest extends TestCase
     {
         $pdo = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
         (new MigrationRunner($pdo))->migrate(require dirname(__DIR__, 3) . '/package/modules/addons/pagou_payments/migrations.php');
-        $pdo->exec('CREATE TABLE tblinvoices (id INTEGER PRIMARY KEY, userid INTEGER, total TEXT, credit TEXT, status TEXT)');
+        $pdo->exec('CREATE TABLE tblinvoices (id INTEGER PRIMARY KEY, userid INTEGER, total TEXT, credit TEXT, status TEXT, duedate TEXT NULL)');
         $pdo->exec('CREATE TABLE tblaccounts (invoiceid INTEGER, transid TEXT UNIQUE, gateway TEXT NOT NULL, amountin TEXT, amountout TEXT)');
         $pdo->exec('CREATE TABLE tblinvoiceitems (id INTEGER PRIMARY KEY, invoiceid INTEGER, description TEXT, amount TEXT)');
-        $pdo->exec("INSERT INTO tblinvoices VALUES (19, 7, '10.00', '0.00', 'Unpaid')");
+        $pdo->exec("INSERT INTO tblinvoices (id, userid, total, credit, status) VALUES (19, 7, '10.00', '0.00', 'Unpaid')");
         return $pdo;
     }
 }

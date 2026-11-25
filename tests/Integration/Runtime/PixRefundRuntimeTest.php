@@ -289,6 +289,50 @@ final class PixRefundRuntimeTest extends TestCase
         self::assertSame(0, (int) $this->pdo->query('SELECT COUNT(*) FROM pagou_payment_attempts a WHERE ' . PeriodicReconciliation::eligibleSql())->fetchColumn());
     }
 
+    public function testARefundCompletedADayAgoWithoutTheRefundTabIsListedAndStopsPolling(): void
+    {
+        $this->runtime->request(19, 'original-receipt', 1200, 1);
+        $worker = new WhmcsRuntime($this->pdo, new AddonSettings(['worker_max_jobs' => '1']), new PdoOperationOutbox($this->pdo), static function (): array {
+            throw new \LogicException('The module must never record the refund in WHMCS by itself.');
+        }, fn () => $this->charge(1200));
+        $worker->refreshPixRefund(19);
+        self::assertSame('confirmed', $this->row()['status']);
+        // The same day the Refund tab may still be sent: the check keeps waiting, without a listing.
+        self::assertSame(['retrying', 'pix_refund_pending'], $this->pdo->query("SELECT status, error_message FROM pagou_payment_operations WHERE operation_type = 'reconcile_payment'")->fetch(PDO::FETCH_NUM));
+        self::assertSame(0, $this->findings('pix_refund_not_recorded'));
+
+        // A day later, still not recorded in WHMCS.
+        $confirmed = gmdate('Y-m-d H:i:s', time() - 2 * 86400);
+        $this->pdo->prepare('UPDATE pagou_pix_refunds SET confirmed_at = ?')->execute([$confirmed]);
+        $this->pdo->exec("UPDATE pagou_payment_operations SET available_at = '2000-01-01' WHERE operation_type = 'reconcile_payment'");
+        $worker->refreshPixRefund(19);
+        self::assertSame(['succeeded', 'pix_refund_awaits_whmcs_record'], $this->pdo->query("SELECT status, error_message FROM pagou_payment_operations WHERE operation_type = 'reconcile_payment'")->fetch(PDO::FETCH_NUM));
+        $finding = $this->pdo->query("SELECT severity, details_json FROM pagou_reconciliation_findings WHERE finding_type = 'pix_refund_not_recorded' AND status = 'open'")->fetch(PDO::FETCH_ASSOC);
+        self::assertSame('high', $finding['severity']);
+        $date = (new \DateTimeImmutable($confirmed, new \DateTimeZone('UTC')))->setTimezone(new \DateTimeZone('America/Sao_Paulo'))->format('d/m/Y');
+        self::assertStringStartsWith('A Pagou confirmou em ' . $date . ' a devolução de R$ 12,00 deste Pix, mas o reembolso não foi registrado no WHMCS.', json_decode((string) $finding['details_json'], true)['message']);
+        self::assertSame(0, $this->nativeWrites);
+        self::assertSame('confirmed', $this->row()['status']);
+
+        // Sent through the Refund tab with the same amount: recorded once, and the listing closes.
+        $result = $worker->refundPix(19, 'original-receipt', 1200, 1);
+        self::assertSame('success', $result['status']);
+        // Only the original request ever reached Pagou: nothing is refunded twice.
+        self::assertSame(1, $this->sent);
+        $this->insertNative(1200, $result['transid']);
+        $worker->confirmNativePixRefunds(19);
+        self::assertSame('applied', $this->row()['status']);
+        self::assertSame(0, $this->findings('pix_refund_not_recorded'));
+    }
+
+    private function findings(string $type): int
+    {
+        $statement = $this->pdo->prepare("SELECT COUNT(*) FROM pagou_reconciliation_findings WHERE finding_type = ? AND status = 'open'");
+        $statement->execute([$type]);
+
+        return (int) $statement->fetchColumn();
+    }
+
     public function testRefundFormClickBooksWhatPagouAlreadyAccepted(): void
     {
         $this->runtime->request(19, 'original-receipt', 1200, 1);

@@ -525,6 +525,8 @@ final class MerchantReportsTest extends TestCase
         $this->receipt('last-month', 6, 20, 700, 'pix', '2026-08-10 12:00:00', 'applied');
         $this->receipt('quarantined', 7, 20, 9000, 'pix', '2026-09-17 12:00:00', 'quarantined');
         $this->finding('finding-1', null, []);
+        // The module already received payments before the period it is compared with.
+        $this->receipt('first-receipt', 8, 20, 300, 'pix', '2026-07-15 12:00:00', 'applied');
 
         $overview = $this->model->overview();
 
@@ -547,6 +549,27 @@ final class MerchantReportsTest extends TestCase
         self::assertStringContainsString('Ver os valores em tabela', $html);
         self::assertStringNotContainsString('<script>bad</script>', $html);
         self::assertStringContainsString('&lt;script&gt;bad&lt;/script&gt; Ltda', $html);
+    }
+
+    public function testAPeriodFromBeforeTheModuleOperatedIsNoBasisForAPercentage(): void
+    {
+        // Test charges exist from July, but the first payment came on 06/08, in the middle of the
+        // 01-17/08 period it would be compared with.
+        $this->invoice(1, 20, '100', '0', 'Unpaid', '2026-09-30');
+        $this->pdo->exec("UPDATE pagou_payment_attempts SET created_at = '2026-07-05 15:00:00'");
+        $this->receipt('first-days', 2, 20, 100, 'pix', '2026-08-06 12:00:00', 'applied');
+        $this->receipt('this-month', 3, 20, 50000, 'pix', '2026-09-10 12:00:00', 'applied');
+
+        $html = (new Dashboard())->render(['merchant' => $this->model->overview()], '');
+        self::assertStringContainsString('Sem base de comparação: o módulo começou a receber em 06/08/2026', $html);
+        self::assertStringNotContainsString('49.900,0%', $html);
+
+        $report = $this->model->report(['from' => '2026-08-10', 'to' => '2026-09-10']);
+        $reports = (new MerchantReports())->report(['report' => $report], '');
+        self::assertStringContainsString('Sem base para comparação percentual: o intervalo anterior começa antes do primeiro recebimento do módulo, em 06/08/2026', $reports);
+        // A previous interval entirely after the start is compared as before.
+        $later = (new MerchantReports())->report(['report' => $this->model->report(['from' => '2026-09-01', 'to' => '2026-09-10'])], '');
+        self::assertStringNotContainsString('começa antes do primeiro recebimento', $later);
     }
 
     public function testLastMonthComparisonStopsAtTheEndOfAShorterMonth(): void

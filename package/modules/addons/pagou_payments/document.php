@@ -8,7 +8,7 @@ require_once dirname(__DIR__, 2) . '/gateways/pagou/bootstrap.php';
 use Pagou\Whmcs\Application\Runtime\InvoiceProgressToken;
 use Pagou\Whmcs\Application\Runtime\RuntimeFactory;
 
-// The CPF or CNPJ typed on an invoice whose charge was refused for it.
+// The CPF or CNPJ, or the CEP, typed on an invoice whose charge was refused for it.
 header('Cache-Control: private, no-store, max-age=0');
 header('X-Content-Type-Options: nosniff');
 
@@ -36,7 +36,11 @@ try {
     if ($clientId < 1 || $invoiceId < 1 || !InvoiceProgressToken::valid($invoiceId, $_POST['token'] ?? null)) {
         $respond(403, ['status' => 'forbidden', 'message' => 'Atualize a página e tente novamente.']);
     }
-    $result = RuntimeFactory::runtime()->saveInvoiceDocument($invoiceId, $method, $clientId, is_string($_POST['document'] ?? null) ? $_POST['document'] : '');
+    $runtime = RuntimeFactory::runtime();
+    // The same form asks for the CEP when the boleto was refused for it.
+    $result = is_string($_POST['postcode'] ?? null)
+        ? $runtime->saveInvoicePostcode($invoiceId, $clientId, $_POST['postcode'])
+        : $runtime->saveInvoiceDocument($invoiceId, $method, $clientId, is_string($_POST['document'] ?? null) ? $_POST['document'] : '');
     $respond(['ok' => 200, 'invalid' => 422, 'forbidden' => 403, 'limited' => 429][$result['status']] ?? 400, $result);
 } catch (\Throwable) {
     $respond(503, ['status' => 'unavailable', 'message' => 'Não foi possível salvar agora. Tente novamente em instantes.']);

@@ -2,6 +2,66 @@
 
 Este histórico descreve as versões da distribuição pública do Pagou para WHMCS.
 
+## 0.3.0-rc.4 (2026-11-25)
+
+Quarta candidata da distribuição pública. Emite sozinha um novo boleto quando
+o banco recusa ou não registra o boleto, deixa de travar as faturas do WHMCS
+durante a conciliação e dá baixa no boleto pago cuja notificação não chega.
+
+- Emite sozinho um novo boleto quando o banco recusa ou não registra o
+  boleto criado pela Pagou, sem esperar o cliente abrir a fatura. O novo
+  boleto sai com o e-mail da fatura e o PDF, 30 minutos, 2 horas, 6 horas e
+  24 horas depois de cada recusa seguida, porque uma falha do banco pode
+  durar o dia inteiro. Depois da quinta recusa seguida, a fatura entra em
+  Pendências como "Cobrança não emitida" e o módulo para de tentar sozinho.
+- O boleto que o banco não registra é consultado a cada minuto nos primeiros
+  15 minutos e depois a cada 15 minutos, em vez de a cada minuto sem fim.
+  Uma hora depois da emissão, ele passa a "Falha na emissão", com o motivo
+  na fatura, e o módulo pede o cancelamento na Pagou. Um registro tardio não
+  reabre esse boleto, e um pagamento que ainda chegue por ele é baixado.
+- Conclui o cancelamento do boleto que o banco recusou ou que a Pagou
+  removeu. Ele ficava em "Cancelamento solicitado", com um novo pedido por
+  dia, e "Gerar novo boleto" não emitia o novo.
+- A conciliação periódica deixa de travar a tabela de faturas do WHMCS. A
+  escolha das cobranças lia numa única consulta as faturas e todo o histórico
+  de consultas de cada cobrança; com a tabela de faturas em MyISAM, isso
+  travava as faturas por dezenas de segundos e deixava o admin lento. Agora a
+  escolha lê em etapas curtas e não se sobrepõe à execução seguinte, e as
+  telas Conciliação e Diagnóstico contam as consultas do dia sem percorrer o
+  histórico.
+- Dá baixa no boleto pago cuja notificação de pagamento não chega, uma hora
+  depois do pagamento, pela consulta da cobrança na Pagou. Vale para o boleto
+  registrado sem multa, juros ou desconto, único caso em que o valor pago é
+  certo. Uma notificação que chegue depois não lança outra baixa.
+- O botão "Executar conciliação" consulta primeiro as cobranças com dados do
+  recebimento pendentes, em vez de esperar a próxima volta da fila periódica.
+- Confere o CEP antes de emitir o boleto e pede o CEP na própria fatura
+  quando ele não tem 8 números, salva no cadastro e emite o boleto de novo.
+  O cadastro do cliente no Brasil também recusa um CEP sem 8 números.
+- Não abre pendência para o e-mail da fatura de um cliente que desativou os
+  e-mails de fatura, e encerra sozinho a pendência de e-mail incerto quando a
+  fatura é paga ou cancelada. A linha do tempo da fatura mostra o motivo.
+- A conciliação periódica consulta cada cobrança no ritmo de que ela
+  precisa: a cada 15 minutos as que precisam de atenção, a cada hora as
+  recentes e uma vez por dia as antigas, com até 10 consultas por minuto para
+  não sobrecarregar a API da Pagou. Com muitas cobranças em aberto, os
+  intervalos ficam maiores; a notificação da Pagou continua sendo o caminho
+  principal da baixa. O botão "Executar conciliação" deixa de consultar
+  cobranças pagas já baixadas.
+- Lista em Pendências o boleto cujo cancelamento a Pagou não confirma há dois
+  dias, porque ele ainda pode ser pago no banco. A pendência se encerra
+  sozinha quando o boleto é cancelado ou pago.
+- Lista em Pendências a devolução de Pix confirmada pela Pagou há um dia e
+  ainda sem registro no WHMCS, e a cobrança cuja consulta falha três vezes
+  seguidas. As duas passam a ser consultadas uma vez por dia, em vez de a
+  cada poucos minutos.
+- Mostra como data da conexão a consulta mais recente que a Pagou respondeu e
+  não mostra porcentagem contra um período anterior ao início do módulo.
+- Tenta mais uma vez a troca do meio da fatura quando duas requisições
+  preparam a mesma cobrança, e registra no log o código do erro.
+- O alerta aos administradores espera 15 minutos antes de incluir dados do
+  recebimento pendentes, que a notificação costuma resolver em segundos.
+
 ## 0.3.0-rc.3 (2026-10-29)
 
 Terceira candidata da distribuição pública. Conclui a correção do cron

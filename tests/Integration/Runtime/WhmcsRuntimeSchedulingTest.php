@@ -159,7 +159,8 @@ final class WhmcsRuntimeSchedulingTest extends TestCase
     public static function settledBoletos(): array
     {
         // Pagou status of the boleto when the cancellation is refused, and whether its payment is looked up.
-        return ['already cancelled' => [3, 0], 'already paid' => [4, 1]];
+        // A boleto the bank rejected (2026-11-22) or Pagou removed can no longer be paid either.
+        return ['already cancelled' => [3, 0], 'already paid' => [4, 1], 'rejected by the bank' => [6, 0], 'removed' => [7, 0]];
     }
 
     #[\PHPUnit\Framework\Attributes\DataProvider('settledBoletos')]
@@ -170,7 +171,8 @@ final class WhmcsRuntimeSchedulingTest extends TestCase
         $boleto = $store->ensureCurrent(10, 20, 'boleto', 1000, '2026-09-11');
         $store->complete($boleto['id'], 'remote-boleto', 'ready', ['state' => 'ready']);
         $api = static fn (string $command, array $parameters): array => ['result' => 'success'];
-        $cancelled = static fn (string $method, string $id) => (new \Pagou\Whmcs\Payment\Boleto\Api\BoletoResponseMapper())->charge(['id' => $id, 'amount' => 10, 'status' => $remoteStatus, 'payload' => ['line' => 'line', 'bar_code' => 'barcode']]);
+        // A rejected boleto never got a digitable line: Pagou returns it without payload.
+        $cancelled = static fn (string $method, string $id) => (new \Pagou\Whmcs\Payment\Boleto\Api\BoletoResponseMapper())->charge(['id' => $id, 'amount' => 10, 'status' => $remoteStatus, 'payload' => $remoteStatus === 6 ? null : ['line' => 'line', 'bar_code' => 'barcode']]);
         $runtime = new WhmcsRuntime($pdo, new AddonSettings(['worker_max_jobs' => '5']), new PdoOperationOutbox($pdo), $api, $cancelled);
 
         // The InvoicePaid hook asks first; the payment follow-up must not ask again.
@@ -178,14 +180,14 @@ final class WhmcsRuntimeSchedulingTest extends TestCase
         (new \Pagou\Whmcs\Payment\Ledger\Infrastructure\OutboxFollowUpQueue($pdo, new PdoOperationOutbox($pdo)))->cancelSiblings(10, \Pagou\Whmcs\Payment\Ledger\EconomicPaymentKey::fromRemotePayment(10, 'pagou', 'pix-receipt'));
         self::assertSame(1, (int) $pdo->query("SELECT COUNT(*) FROM pagou_payment_operations WHERE operation_type = 'cancel_boleto'")->fetchColumn());
 
-        // Pagou refuses to cancel a boleto it reports cancelled or paid; neither is an uncertain outcome.
+        // Pagou refuses to cancel a boleto it reports cancelled, paid, rejected or removed; none is an uncertain outcome.
         $runtime->runWorker();
         self::assertSame('succeeded', $pdo->query("SELECT status FROM pagou_payment_operations WHERE operation_type = 'cancel_boleto'")->fetchColumn());
         self::assertSame(0, (int) $pdo->query("SELECT COUNT(*) FROM pagou_payment_operations WHERE operation_type = 'cancel_boleto' AND status = 'uncertain'")->fetchColumn());
         // A boleto paid meanwhile is looked up at once, so its payment is booked without waiting.
         self::assertSame($lookups, (int) $pdo->query("SELECT COUNT(*) FROM pagou_payment_operations WHERE operation_type = 'reconcile_payment'")->fetchColumn());
         // The charge leaves "cancel requested" with the state Pagou reports, without a false alarm.
-        self::assertSame($remoteStatus === 3 ? 'cancelled' : 'paid', $store->find($boleto['id'])['status']);
+        self::assertSame($remoteStatus === 4 ? 'paid' : 'cancelled', $store->find($boleto['id'])['status']);
         self::assertSame(0, (int) $pdo->query("SELECT COUNT(*) FROM pagou_reconciliation_findings WHERE finding_type = 'payment_during_cancellation'")->fetchColumn());
     }
 

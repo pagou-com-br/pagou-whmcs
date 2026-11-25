@@ -37,6 +37,9 @@ final class MerchantReadModel
             'daily' => $filter->kind === 'receipts' ? $this->daily($rows, $filter) : [],
             'total' => count($rows), 'pages' => $pages,
             'firstAt' => $first, 'asOf' => ($this->now ?? new DateTimeImmutable())->format('c'),
+            // A previous interval that starts before the first receipt is no basis for a percentage.
+            'previousStart' => $previous === null ? null : $filter->bounds(true)[0],
+            'firstReceiptAt' => $this->query("SELECT MIN(payment_at_utc) AS first_at FROM pagou_ledger_entries WHERE entry_type = 'received_payment'")[0]['first_at'] ?? null,
         ];
     }
 
@@ -68,6 +71,7 @@ final class MerchantReadModel
             'recent' => array_slice($recent, 0, 5),
             'lastMonth' => $this->summary($this->receipts($lastMonth)) + [
                 'from' => $previousStart->format('Y-m-d'), 'to' => $previousEnd->format('Y-m-d'),
+                'since' => $receipts['firstReceiptAt'], 'start' => $lastMonth->bounds()[0],
             ],
         ];
     }
@@ -341,7 +345,7 @@ final class MerchantReadModel
                 'status' => (string) $row['status'], 'days' => $days, 'severity' => (string) $row['severity'],
                 'type' => (string) $row['finding_type'], 'reference' => (string) $row['id'],
                 // These findings record the guidance of the case they were opened for.
-                'guidance' => in_array($row['finding_type'], ['late_charges_require_review', 'boleto_issuance_requires_review', 'charge_issuance_refused'], true)
+                'guidance' => in_array($row['finding_type'], ['late_charges_require_review', 'boleto_issuance_requires_review', 'charge_issuance_refused', 'boleto_cancellation_unconfirmed', 'pix_refund_not_recorded', 'reconciliation_keeps_failing'], true)
                     ? (string) ($this->json($row['details_json'])['message'] ?? self::guidance((string) $row['finding_type']))
                     : self::guidance((string) $row['finding_type']), 'basis' => 'Valor de referência da pendência',
             ];
@@ -508,7 +512,8 @@ final class MerchantReadModel
             'payment_application_failed' => 'Confira a transação e os créditos na fatura antes de qualquer baixa manual. Consulte o suporte se o resultado continuar incerto.',
             'amount_mismatch', 'payment_amount_mismatch', 'card_amount_mismatch' => 'Compare o valor recebido na Pagou com o saldo e os pagamentos da fatura.',
             'invoice_not_found', 'missing_invoice' => 'Localize a fatura correspondente no WHMCS antes de vincular o pagamento.',
-            'payment_evidence_missing' => 'Confira a notificação do recebimento e sua conciliação. O estado pago da cobrança, sozinho, não comprova os dados necessários para a baixa.',
+            'payment_evidence_missing' => 'Confira a notificação do recebimento e sua conciliação. Um boleto sem multa, juros ou desconto recebe baixa sozinho uma hora depois do pagamento, pelo valor da cobrança. Nos demais casos, o estado pago da cobrança, sozinho, não informa o valor recebido.',
+            'payment_after_lookup_booking' => 'O boleto já recebeu baixa pela consulta da cobrança e depois chegou um recebimento assinado diferente. Compare os dois na Pagou e na fatura antes de lançar outro pagamento.',
             'payment_during_cancellation' => 'Confira o pagamento recebido antes de substituir o boleto. A cobrança foi paga durante o cancelamento.',
             'late_charges_require_review' => 'Revise as unidades e a periodicidade dos encargos e confira a multa nativa do WHMCS antes de emitir novamente.',
             'due_date_requires_review' => 'Confira o vencimento da fatura e o prazo permitido para a cobrança antes de emitir novamente.',
@@ -519,6 +524,9 @@ final class MerchantReadModel
             'currency_mismatch' => 'Confira a moeda da fatura e da cobrança. Este módulo opera em reais.',
             'boleto_issuance_requires_review' => 'Confira a cobrança na Pagou antes de gerar um novo boleto pelo card da fatura.',
             'charge_issuance_refused' => 'Confira o motivo no histórico da fatura e o cadastro do cliente.',
+            'boleto_cancellation_unconfirmed' => 'Confira o boleto na Pagou: a Pagou não confirmou o cancelamento, e ele ainda pode ser pago no banco.',
+            'pix_refund_not_recorded' => 'Registre o reembolso pela aba Refund da fatura, com o mesmo valor: a devolução já foi feita e não é repetida.',
+            'reconciliation_keeps_failing' => 'Confira a cobrança na Pagou e o diagnóstico. O módulo consulta uma vez por dia até uma consulta dar certo.',
             'pix_refund_requires_review', 'pix_refund_external_requires_review' => 'Confira a devolução na Pagou e a transação de reembolso na fatura do WHMCS. Não solicite outra devolução para este Pix.',
             default => 'Abra o detalhe, confira a cobrança e a fatura. Consulte o diagnóstico ou o suporte antes de repetir uma ação financeira.',
         };

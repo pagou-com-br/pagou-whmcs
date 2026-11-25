@@ -183,6 +183,25 @@ final class PdoOperationOutboxTest extends TestCase
         self::assertEquals($now->modify('+60 seconds'), $outbox->find('other')?->availableAt);
     }
 
+    public function testAnOpenInvoicePageNoLongerSpeedsUpARegistrationTakingOverAQuarterOfAnHour(): void
+    {
+        $pdo = $this->database();
+        $attempt = (new \Pagou\Whmcs\Application\Runtime\PaymentAttemptStore($pdo))->ensureCurrent(10, 20, 'boleto', 1200, '2026-10-02');
+        $outbox = new PdoOperationOutbox($pdo);
+        $now = $this->now();
+        foreach (['old' => $now->modify('-16 minutes'), 'fresh' => $now->modify('-14 minutes')] as $id => $created) {
+            $outbox->enqueue(new OperationJob($id, OperationType::ReconcilePayment, $id, JobPriority::Issuance, ['attempt_id' => $attempt['id']], $created, $created));
+            $lease = $outbox->claim('background', $now, new DateInterval('PT30S'));
+            self::assertSame($id, $lease?->job->id);
+            self::assertTrue($outbox->retry($id, $lease->token, $now->modify('+15 minutes'), 'boleto_registration_pending', false));
+        }
+        $scoped = new PdoOperationOutbox($pdo, 10);
+        $scoped->expeditePending($now->modify('+3 seconds'));
+        self::assertSame('fresh', $scoped->claim('interactive', $now->modify('+3 seconds'), new DateInterval('PT30S'))?->job->id);
+        self::assertNull($scoped->claim('interactive', $now->modify('+3 seconds'), new DateInterval('PT30S')));
+        self::assertEquals($now->modify('+15 minutes'), $outbox->find('old')?->availableAt);
+    }
+
     private function outbox(): PdoOperationOutbox
     {
         return new PdoOperationOutbox($this->database());
